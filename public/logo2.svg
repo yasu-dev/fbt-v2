@@ -1,0 +1,36 @@
+<svg width="56" height="56" viewBox="0 0 56 56" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="hexGradientSmall" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#5BA4F2;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#4A94E2;stop-opacity:1" />
+      <stop offset="70%" style="stop-color:#3B84D2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2C74C2;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadowSmall" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="rgba(0,0,0,0.3)"/>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+      <feMerge> 
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/> 
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- 六角形ロゴ（中央配置・さらに大きく） -->
+  <g transform="translate(28, 28)">
+    <polygon points="-18,-10 -6,-16 10,-10 10,10 -6,16 -18,10" 
+             fill="url(#hexGradientSmall)" 
+             stroke="#2C74C2" 
+             stroke-width="2" 
+             filter="url(#shadowSmall)"/>
+    
+    <!-- 3D縦線効果（大きくした） -->
+    <rect x="-12" y="-8" width="2.5" height="16" fill="white" opacity="0.9" rx="1.25" filter="url(#glow)"/>
+    <rect x="-7" y="-10" width="2.5" height="20" fill="white" opacity="1" rx="1.25" filter="url(#glow)"/>
+    <rect x="-2" y="-8" width="2.5" height="16" fill="white" opacity="0.9" rx="1.25" filter="url(#glow)"/>
+    <rect x="3" y="-10" width="2.5" height="20" fill="white" opacity="1" rx="1.25" filter="url(#glow)"/>
+    <rect x="8" y="-8" width="2.5" height="16" fill="white" opacity="0.9" rx="1.25" filter="url(#glow)"/>
+  </g>
+</svg>

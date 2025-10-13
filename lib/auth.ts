@@ -25,6 +25,9 @@ export interface SessionUser {
   email: string;
   username: string;
   role: string;
+  fullName?: string;
+  phoneNumber?: string;
+  address?: string;
 }
 
 export interface JWTPayload {
@@ -55,16 +58,24 @@ export class AuthService {
 
   static async login(email: string, password: string): Promise<{ user: SessionUser; token: string } | null> {
     try {
+      console.log('AuthService.login called with:', { email, password: '***' });
+      
       const user = await prisma.user.findUnique({
         where: { email },
       });
 
+      console.log('User found:', user ? 'YES' : 'NO');
+
       if (!user || !user.password) {
+        console.log('User not found or no password');
         return null;
       }
 
       const isValid = await this.verifyPassword(password, user.password);
+      console.log('Password valid:', isValid);
+      
       if (!isValid) {
+        console.log('Password verification failed');
         return null;
       }
 
@@ -96,6 +107,9 @@ export class AuthService {
         email: user.email,
         username: user.username,
         role: user.role,
+        fullName: user.fullName || undefined,
+        phoneNumber: user.phoneNumber || undefined,
+        address: user.address || undefined,
       };
 
       return { user: sessionUser, token };
@@ -138,6 +152,9 @@ export class AuthService {
         email: session.user.email,
         username: session.user.username,
         role: session.user.role,
+        fullName: session.user.fullName || undefined,
+        phoneNumber: session.user.phoneNumber || undefined,
+        address: session.user.address || undefined,
       };
     } catch (error) {
       return null;
@@ -145,9 +162,58 @@ export class AuthService {
   }
 
   static async getUserFromRequest(request: NextRequest): Promise<SessionUser | null> {
-    const token = request.cookies.get('auth-token')?.value;
+    // Cookieから認証トークンを取得
+    let token = request.cookies.get('auth-token')?.value;
+    
+    // CookieにトークンがなければAuthorizationヘッダーを確認
+    if (!token) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
+    
     if (!token) {
       return null;
+    }
+
+    // 一時的な固定トークン認証（環境フラグで制御）
+    const allowFixed = process.env.ALLOW_FIXED_AUTH === 'true';
+    if (allowFixed && token.startsWith('fixed-auth-token-')) {
+      const tokenMap = {
+        'fixed-auth-token-seller-1': {
+          id: 'cme5ew5p300003j7w124ifkpy',
+          email: 'seller@example.com',
+          username: 'テストセラー',
+          role: 'seller',
+          fullName: 'テストセラー',
+          phoneNumber: '090-1234-5678',
+          address: '東京都渋谷区1-1-1',
+        },
+        'fixed-auth-token-staff-1': {
+          id: 'staff-1',
+          email: 'staff@example.com',
+          username: 'staff',
+          role: 'staff',
+          fullName: 'テストスタッフ',
+          phoneNumber: '090-1234-5679',
+          address: '東京都渋谷区1-1-2',
+        },
+        'fixed-auth-token-admin-1': {
+          id: 'admin-1',
+          email: 'admin@example.com',
+          username: 'admin',
+          role: 'admin',
+          fullName: '管理者',
+          phoneNumber: '090-1234-5680',
+          address: '東京都渋谷区1-1-3',
+        }
+      };
+      
+      const user = tokenMap[token as keyof typeof tokenMap];
+      if (user) {
+        return user;
+      }
     }
 
     return this.validateSession(token);

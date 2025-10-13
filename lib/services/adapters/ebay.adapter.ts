@@ -48,6 +48,9 @@ export class EbayAdapter {
   async createListing(data: EbayListingData): Promise<EbayListingResponse> {
     try {
       const endpoint = getApiEndpoint('ebay', '/listing');
+      console.log('🔍 eBay Adapter - Using endpoint:', endpoint);
+      console.log('🔍 eBay Adapter - useMockServices:', serviceConfig.useMockServices);
+      
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: this.headers,

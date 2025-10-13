@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import NexusCard from '@/app/components/ui/NexusCard';
 import NexusButton from '@/app/components/ui/NexusButton';
 
@@ -20,6 +20,7 @@ interface EnhancedImageUploaderProps {
   onUpload?: (files: File[]) => Promise<void>;
   enableEdit?: boolean;
   enableWatermark?: boolean;
+  autoUpload?: boolean; // 画像選択時に自動アップロード
 }
 
 export default function EnhancedImageUploader({
@@ -28,17 +29,36 @@ export default function EnhancedImageUploader({
   acceptedFormats = ['image/jpeg', 'image/png', 'image/webp'],
   onUpload,
   enableEdit = true,
-  enableWatermark = false
+  enableWatermark = false,
+  autoUpload = false
 }: EnhancedImageUploaderProps) {
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previewModalRef = useRef<HTMLDivElement>(null);
 
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFiles = useCallback((files: FileList | null) => {
+  // 画像プレビューモーダルのスクロール位置リセット
+  useEffect(() => {
+    if (selectedImage) {
+      // ページ全体を最上部にスクロール - 正しいスクロールコンテナを対象
+      const scrollContainer = document.querySelector('.page-scroll-container');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = 0;
+      } else {
+        window.scrollTo(0, 0);
+      }
+      
+      if (previewModalRef.current) {
+        previewModalRef.current.scrollTop = 0;
+      }
+    }
+  }, [selectedImage]);
+
+  const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files) return;
     
     const acceptedFiles = Array.from(files).filter(file => {
@@ -52,11 +72,65 @@ export default function EnhancedImageUploader({
       file,
       preview: URL.createObjectURL(file),
       progress: 0,
-      status: 'pending' as const
+      status: autoUpload ? 'uploading' as const : 'pending' as const
     }));
     
     setImages(prev => [...prev, ...newImages].slice(0, maxFiles));
-  }, [maxFiles, maxSize, acceptedFormats, images.length]);
+    
+    // 自動アップロードが有効な場合、即座にアップロードを実行
+    if (autoUpload && onUpload && newImages.length > 0) {
+      setIsUploading(true);
+      
+      for (const image of newImages) {
+        try {
+          // プログレスバーのアニメーション
+          for (let progress = 0; progress <= 100; progress += 20) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            setImages(prev => prev.map(img => 
+              img.id === image.id 
+                ? { ...img, progress } 
+                : img
+            ));
+          }
+
+          // 実際のアップロード実行
+          await onUpload([image.file]);
+
+          setImages(prev => prev.map(img => 
+            img.id === image.id 
+              ? { ...img, status: 'completed', progress: 100 } 
+              : img
+          ));
+        } catch (error) {
+          console.error('[ERROR] 画像自動アップロードエラー:', error);
+          
+          let errorMessage = 'アップロードに失敗しました';
+          
+          if (error instanceof Error) {
+            if (error.message.includes('404')) {
+              errorMessage = 'アップロードサーバーが見つかりません';
+            } else if (error.message.includes('fetch')) {
+              errorMessage = 'ネットワークエラー';
+            } else {
+              errorMessage = error.message;
+            }
+          }
+          
+          setImages(prev => prev.map(img => 
+            img.id === image.id 
+              ? { 
+                  ...img, 
+                  status: 'error', 
+                  error: errorMessage
+                } 
+              : img
+          ));
+        }
+      }
+      
+      setIsUploading(false);
+    }
+  }, [maxFiles, maxSize, acceptedFormats, images.length, autoUpload, onUpload]);
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -125,9 +199,25 @@ export default function EnhancedImageUploader({
             : img
         ));
       } catch (error) {
+        console.error('[ERROR] 画像手動アップロードエラー:', error);
+        
+        let errorMessage = 'アップロードに失敗しました';
+        
+        if (error instanceof Error) {
+          if (error.message.includes('404')) {
+            errorMessage = 'アップロードサーバーが見つかりません';
+          } else if (error.message.includes('fetch')) {
+            errorMessage = 'ネットワークエラー';
+          } else if (error.message.includes('size')) {
+            errorMessage = 'ファイルサイズが大きすぎます';
+          } else {
+            errorMessage = error.message;
+          }
+        }
+        
         setImages(prev => prev.map(img => 
           img.id === image.id 
-            ? { ...img, status: 'error', error: error instanceof Error ? error.message : 'Upload failed' } 
+            ? { ...img, status: 'error', error: errorMessage } 
             : img
         ));
       }
@@ -231,10 +321,16 @@ export default function EnhancedImageUploader({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
         <p className="text-lg font-medium mb-2">
-          {isDragActive ? 'ドロップしてアップロード' : 'クリックまたはドラッグ＆ドロップ'}
+          {isDragActive 
+            ? 'ドロップしてアップロード' 
+            : autoUpload 
+              ? 'クリックまたはドラッグ＆ドロップ（自動アップロード）'
+              : 'クリックまたはドラッグ＆ドロップ'
+          }
         </p>
         <p className="text-sm text-gray-500">
           {acceptedFormats.join(', ')} • 最大{maxSize / 1024 / 1024}MB • 最大{maxFiles}枚
+          {autoUpload && <span className="block text-blue-600 mt-1">画像を選択すると自動でアップロードされます</span>}
         </p>
       </div>
 
@@ -281,7 +377,7 @@ export default function EnhancedImageUploader({
               
               {/* Actions */}
               <div className="absolute top-2 right-2 flex gap-2">
-                {enableEdit && image.status === 'pending' && (
+                {enableEdit && !autoUpload && image.status === 'pending' && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -296,26 +392,29 @@ export default function EnhancedImageUploader({
                   </button>
                 )}
                 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeImage(image.id);
-                  }}
-                  className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md"
-                  title="削除"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
+                {/* 自動アップロード時は削除ボタンを表示しない（アップロード完了後は削除可能） */}
+                {(!autoUpload || image.status === 'completed' || image.status === 'error') && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeImage(image.id);
+                    }}
+                    className="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md"
+                    title="削除"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
               </div>
             </NexusCard>
           ))}
         </div>
       )}
 
-      {/* Upload Button */}
-      {images.length > 0 && images.some(img => img.status === 'pending') && (
+      {/* Upload Button（自動アップロード時は表示しない） */}
+      {!autoUpload && images.length > 0 && images.some(img => img.status === 'pending') && (
         <div className="flex justify-center">
           <NexusButton
             onClick={uploadImages}
@@ -334,7 +433,8 @@ export default function EnhancedImageUploader({
       {/* Image Preview Modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+          ref={previewModalRef}
+          className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center p-4 pt-8 overflow-y-auto"
           onClick={() => setSelectedImage(null)}
         >
           <div className="relative max-w-4xl max-h-full">
@@ -356,29 +456,7 @@ export default function EnhancedImageUploader({
         </div>
       )}
 
-      {/* Image Statistics */}
-      {images.length > 0 && (
-        <NexusCard className="p-4 bg-gray-50">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <p className="text-2xl font-bold text-blue-600">{images.length}</p>
-              <p className="text-sm text-gray-600">総枚数</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-green-600">
-                {images.filter(img => img.status === 'completed').length}
-              </p>
-              <p className="text-sm text-gray-600">完了</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-600">
-                {(images.reduce((sum, img) => sum + img.file.size, 0) / 1024 / 1024).toFixed(1)}MB
-              </p>
-              <p className="text-sm text-gray-600">合計サイズ</p>
-            </div>
-          </div>
-        </NexusCard>
-      )}
+
     </div>
   );
 } 

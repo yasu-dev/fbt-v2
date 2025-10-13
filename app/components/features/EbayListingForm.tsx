@@ -38,7 +38,6 @@ export default function EbayListingForm({ product, onSuccess, onCancel }: EbayLi
   const [buyItNowPrice, setBuyItNowPrice] = useState(product.price);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewMode, setPreviewMode] = useState(false);
 
   useEffect(() => {
     fetchTemplates();
@@ -223,7 +222,7 @@ export default function EbayListingForm({ product, onSuccess, onCancel }: EbayLi
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-nexus-text-secondary">
-                ¥
+                $
               </span>
               <input
                 type="number"
@@ -233,7 +232,7 @@ export default function EbayListingForm({ product, onSuccess, onCancel }: EbayLi
               />
             </div>
             <p className="text-xs text-nexus-text-muted mt-1">
-              推奨: ¥{Math.floor(product.price * 0.8).toLocaleString()}
+              推奨: ${Math.floor(product.price * 0.8).toLocaleString()}
             </p>
           </div>
 
@@ -243,7 +242,7 @@ export default function EbayListingForm({ product, onSuccess, onCancel }: EbayLi
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-nexus-text-secondary">
-                ¥
+                $
               </span>
               <input
                 type="number"
@@ -253,7 +252,7 @@ export default function EbayListingForm({ product, onSuccess, onCancel }: EbayLi
               />
             </div>
             <p className="text-xs text-nexus-text-muted mt-1">
-              定価: ¥{product.price.toLocaleString()}
+              定価: ${product.price.toLocaleString()}
             </p>
           </div>
         </div>
@@ -286,60 +285,12 @@ export default function EbayListingForm({ product, onSuccess, onCancel }: EbayLi
           />
         </div>
 
-        {/* Preview Toggle */}
-        <div className="mb-6">
-          <button
-            onClick={() => setPreviewMode(!previewMode)}
-            className="nexus-button"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            プレビュー{previewMode ? 'を隠す' : 'を表示'}
-          </button>
-        </div>
-
-        {/* Preview */}
-        {previewMode && (
-          <div className="mb-6 p-6 bg-nexus-bg-secondary rounded-lg border border-nexus-border">
-            <h4 className="font-medium text-nexus-text-primary mb-4">出品プレビュー</h4>
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm text-nexus-text-secondary mb-1">タイトル:</p>
-                <p className="font-medium text-nexus-text-primary">{getPreviewData().title}</p>
-              </div>
-              <div>
-                <p className="text-sm text-nexus-text-secondary mb-1">説明:</p>
-                <div 
-                  className="prose prose-sm max-w-none text-nexus-text-primary"
-                  dangerouslySetInnerHTML={{ __html: getPreviewData().description }}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-nexus-text-secondary">開始価格:</p>
-                  <p className="font-display font-bold text-lg text-nexus-text-primary">
-                    ¥{startingPrice.toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-nexus-text-secondary">即決価格:</p>
-                  <p className="font-display font-bold text-lg text-nexus-text-primary">
-                    ¥{buyItNowPrice.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Actions */}
         <div className="flex justify-between">
           <button
             onClick={onCancel}
-            className="nexus-button"
             disabled={isSubmitting}
+            className="nexus-button secondary"
           >
             キャンセル
           </button>
@@ -351,16 +302,14 @@ export default function EbayListingForm({ product, onSuccess, onCancel }: EbayLi
           >
             {isSubmitting ? (
               <>
-                <div className="animate-spin h-4 w-4 border-b-2 border-white rounded-full mr-2 inline-block"></div>
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
                 出品中...
               </>
             ) : (
-              <>
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                eBayに出品
-              </>
+              'eBayに出品'
             )}
           </button>
         </div>

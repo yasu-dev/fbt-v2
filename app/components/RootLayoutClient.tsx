@@ -1,10 +1,63 @@
 'use client';
 
+import { useEffect } from 'react';
+
 interface RootLayoutClientProps {
   children: React.ReactNode;
 }
 
 export default function RootLayoutClient({ children }: RootLayoutClientProps) {
+  useEffect(() => {
+    // アプリケーション全体でのunhandled promise rejectionを監視
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      // Chrome拡張機能関連のエラーを無視
+      if (event.reason instanceof Error) {
+        const error = event.reason;
+        if (error.message.includes('message port closed') || 
+            error.message.includes('Extension context invalidated') ||
+            error.stack?.includes('content.js') ||
+            error.stack?.includes('chrome-extension://')) {
+          // Chrome拡張機能関連のエラーは無視
+          event.preventDefault();
+          return;
+        }
+        
+        // ログイン関連のエラーの場合は詳細をログ出力
+        if (error.message.includes('login') || error.message.includes('ログイン') || error.message.includes('auth')) {
+          console.error('[ROOT LAYOUT] ログイン関連エラー詳細:', {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          });
+        }
+      }
+      
+      console.error('[ROOT LAYOUT] Unhandled promise rejection:', event.reason);
+      
+      // エラーイベントを防止（コンソールの "Uncaught (in promise)" エラーを抑制）
+      event.preventDefault();
+    };
+
+    const handleError = (event: ErrorEvent) => {
+      console.error('[ROOT LAYOUT] Global error:', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error
+      });
+    };
+
+    // イベントリスナーを登録
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    window.addEventListener('error', handleError);
+
+    // クリーンアップ
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+      window.removeEventListener('error', handleError);
+    };
+  }, []);
   return (
     <div className="app-container">
       {/* Skip to main content for accessibility */}
@@ -34,7 +87,8 @@ export default function RootLayoutClient({ children }: RootLayoutClientProps) {
           <button className="user-nexus" aria-label="ユーザーメニュー" aria-expanded="false">
             <div className="user-orb" aria-hidden="true">WD</div>
             <div className="text-left">
-              <div className="font-semibold">管理者</div>
+              {/* Phase1: 管理者テキストを非表示 */}
+              {/* <div className="font-semibold">管理者</div> */}
               <div className="text-xs opacity-80">THE WORLD DOOR</div>
             </div>
           </button>

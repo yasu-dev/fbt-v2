@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
+import { ActivityLogger } from '@/lib/activity-logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +14,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ログアウト前にユーザー情報を取得
+    const user = await AuthService.getUserFromRequest(request);
+    
     await AuthService.logout(token);
+
+    // ログアウトの活動ログを記録
+    if (user) {
+      const metadata = ActivityLogger.extractMetadataFromRequest(request);
+      await ActivityLogger.logAuth('logout', user.id, {
+        ...metadata,
+        email: user.email,
+        role: user.role,
+      });
+    }
 
     const response = NextResponse.json({
       success: true,

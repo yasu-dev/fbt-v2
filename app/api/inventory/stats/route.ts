@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { MockFallback } from '@/lib/mock-fallback';
+
 
 const prisma = new PrismaClient();
 
@@ -37,7 +37,8 @@ export async function GET() {
 
     // Transform status data
     const statusStats = statusCounts.reduce((acc, item) => {
-      const japaneseStatus = item.status.replace('inbound', '入庫')
+      const japaneseStatus = item.status.replace('inbound_pending', '入庫待ち')
+                                      .replace('inbound', '入庫待ち')
                                       .replace('inspection', '検品')
                                       .replace('storage', '保管')
                                       .replace('listing', '出品')
@@ -45,10 +46,55 @@ export async function GET() {
                                       .replace('shipping', '出荷')
                                       .replace('delivery', '配送')
                                       .replace('sold', '売約済み')
+                                      .replace('workstation', '梱包待ち')
                                       .replace('returned', '返品');
       acc[japaneseStatus] = item._count.id;
       return acc;
     }, {} as Record<string, number>);
+
+    // 準備フェーズ: 納品プラン作成・倉庫発送のカウント
+    const planStats = await prisma.deliveryPlan.groupBy({
+      by: ['status'],
+      _count: { _all: true }
+    });
+
+    // 納品プラン作成数（Pendingステータス）
+    statusStats['納品プラン作成'] = planStats
+      .filter(p => p.status === 'Pending')
+      .reduce((sum, p) => sum + p._count._all, 0);
+
+    // 倉庫発送数（Shippedステータス）
+    statusStats['倉庫発送'] = planStats
+      .filter(p => p.status === 'Shipped')
+      .reduce((sum, p) => sum + p._count._all, 0);
+
+    // 販売フェーズ: 受注処理のカウント
+    const processingOrders = await prisma.order.count({
+      where: { status: 'processing' }
+    });
+    statusStats['受注処理'] = processingOrders;
+
+    // 出荷フェーズ: 梱包・発送のカウント
+    const packingShipments = await prisma.shipment.count({
+      where: { status: 'packed' }
+    });
+    statusStats['梱包・発送'] = packingShipments;
+
+    // 購入者受取は既存の配送ステータスを利用
+    statusStats['購入者受取'] = statusStats['配送'] || 0;
+
+    // 返品フェーズ: 返品受付・検品・再出品のカウント
+    const returnStats = await prisma.return.groupBy({
+      by: ['status'],
+      _count: { _all: true }
+    });
+
+    statusStats['返品受付'] = returnStats
+      .find(r => r.status === 'pending')?._count._all || 0;
+    statusStats['返品検品'] = returnStats
+      .find(r => r.status === 'inspecting')?._count._all || 0;
+    statusStats['再出品・廃棄'] = returnStats
+      .find(r => r.status === 'approved')?._count._all || 0;
 
     // Transform category data
     const categoryStats = categoryCounts.reduce((acc, item) => {
@@ -69,16 +115,7 @@ export async function GET() {
   } catch (error) {
     console.error('Inventory stats error:', error);
     
-    // Prismaエラーの場合はフォールバックデータを使用
-    if (MockFallback.isPrismaError(error)) {
-      console.log('Using fallback data for inventory stats due to Prisma error');
-      try {
-        const fallbackData = MockFallback.getInventoryStatsMockData();
-        return NextResponse.json(fallbackData);
-      } catch (fallbackError) {
-        console.error('Fallback data error:', fallbackError);
-      }
-    }
+
     
     // エラー時はデフォルトデータを返す
     return NextResponse.json({

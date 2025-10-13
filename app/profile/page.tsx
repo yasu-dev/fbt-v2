@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/app/components/layouts/DashboardLayout';
+import UnifiedPageHeader from '@/app/components/ui/UnifiedPageHeader';
 import {
   KeyIcon,
   ShieldCheckIcon,
@@ -30,6 +31,10 @@ interface UserProfile {
   department?: string;
   employeeId?: string;
   profileImage?: string;
+  // セラー向け追加フィールド
+  companyName?: string;
+  businessType?: 'individual' | 'corporation';
+  representativeName?: string;
 }
 
 export default function ProfilePage() {
@@ -38,7 +43,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<UserProfile | null>(null);
-  const [userType, setUserType] = useState<'staff' | 'seller'>('staff');
+  const [userType, setUserType] = useState<'staff' | 'seller' | null>(null);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
@@ -53,21 +58,63 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
-    // 実際の実装はAPIから取得
-    const mockProfile: UserProfile = {
-      id: 'user-001',
-      name: '鈴木 花子',
-      email: 'suzuki@theworlddoor.com',
-      role: 'シニアスタッフ',
-      joinDate: '2022年10月',
-      lastLogin: '2025年1月6日 08:00',
-      phone: '090-1234-5678',
-      department: '検品・撮影部',
-      employeeId: 'STF-2022-001',
+    let mounted = true;
+    const fetchUserProfile = async () => {
+      try {
+        const response = await fetch('/api/auth/session', {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!mounted) return;
+        if (!response.ok) {
+          router.push('/login');
+          return;
+        }
+        const result = await response.json();
+        if (result?.success && result?.user) {
+          const userRole = result.user.role;
+          if (userRole === 'seller') {
+            setUserType('seller');
+            const sellerProfile: UserProfile = {
+              id: result.user.id,
+              name: result.user.fullName || result.user.username || result.user.email,
+              email: result.user.email,
+              role: 'プレミアムセラー',
+              joinDate: new Date(result.user.createdAt || Date.now()).toLocaleDateString('ja-JP'),
+              lastLogin: new Date().toLocaleString('ja-JP'),
+              phone: result.user.phoneNumber,
+              companyName: undefined,
+              businessType: undefined,
+              representativeName: result.user.fullName || undefined,
+            };
+            setProfile(sellerProfile);
+            setEditForm(sellerProfile);
+          } else {
+            setUserType('staff');
+            const staffProfile: UserProfile = {
+              id: result.user.id,
+              name: result.user.fullName || result.user.username || result.user.email,
+              email: result.user.email,
+              role: userRole === 'admin' ? '管理者' : 'シニアスタッフ',
+              joinDate: new Date(result.user.createdAt || Date.now()).toLocaleDateString('ja-JP'),
+              lastLogin: new Date().toLocaleString('ja-JP'),
+              phone: result.user.phoneNumber,
+              department: undefined,
+              employeeId: undefined,
+            };
+            setProfile(staffProfile);
+            setEditForm(staffProfile);
+          }
+        } else {
+          router.push('/login');
+        }
+      } catch {
+        router.push('/login');
+      }
     };
-    setProfile(mockProfile);
-    setEditForm(mockProfile);
-  }, []);
+    fetchUserProfile();
+    return () => { mounted = false; };
+  }, [router]);
 
   const handleEdit = () => {
     setIsEditing(true);
@@ -307,6 +354,32 @@ export default function ProfilePage() {
     setNotificationSettings(prev => ({ ...prev, [key]: value }));
   };
 
+  const headerActions = !isEditing ? (
+    <NexusButton
+      onClick={handleEdit}
+      variant="primary"
+      icon={<PencilIcon className="w-5 h-5" />}
+    >
+      編集
+    </NexusButton>
+  ) : (
+    <>
+      <NexusButton
+        onClick={handleCancel}
+        icon={<XMarkIcon className="w-5 h-5" />}
+      >
+        キャンセル
+      </NexusButton>
+      <NexusButton
+        onClick={handleSave}
+        variant="primary"
+        icon={<CheckIcon className="w-5 h-5" />}
+      >
+        保存
+      </NexusButton>
+    </>
+  );
+
   if (!profile) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -318,69 +391,19 @@ export default function ProfilePage() {
   return (
     <DashboardLayout userType={userType}>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="intelligence-card global">
-          <div className="p-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-display font-bold text-nexus-text-primary">
-                  プロフィール設定
-                </h1>
-                <p className="text-nexus-text-secondary">
-                  個人情報とアカウント設定を管理
-                </p>
-              </div>
-              <div className="flex space-x-3">
-                {!isEditing ? (
-                  <NexusButton
-                    onClick={handleEdit}
-                    variant="primary"
-                    icon={<PencilIcon className="w-5 h-5" />}
-                  >
-                    編集
-                  </NexusButton>
-                ) : (
-                  <>
-                    <NexusButton
-                      onClick={handleCancel}
-                      icon={<XMarkIcon className="w-5 h-5" />}
-                    >
-                      キャンセル
-                    </NexusButton>
-                    <NexusButton
-                      onClick={handleSave}
-                      variant="primary"
-                      icon={<CheckIcon className="w-5 h-5" />}
-                    >
-                      保存
-                    </NexusButton>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* 統一ヘッダー */}
+        <UnifiedPageHeader
+          title="プロフィール設定"
+          subtitle="個人情報とアカウント設定を管理"
+          userType={userType}
+          iconType="profile"
+          actions={headerActions}
+        />
 
         {/* Profile Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Profile Image & Basic Info */}
-          <div className="intelligence-card global">
-            <div className="p-8">
-              <div className="text-center">
-                <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center text-2xl font-bold text-blue-600 mx-auto mb-4">
-                  {profile.name.charAt(0)}
-                </div>
-                <h2 className="text-xl font-bold text-nexus-text-primary">{profile.name}</h2>
-                <p className="text-nexus-text-secondary">{profile.role}</p>
-                <p className="text-sm text-nexus-text-secondary mt-2">
-                  入社: {profile.joinDate}
-                </p>
-              </div>
-            </div>
-          </div>
-
+        <div className="max-w-4xl mx-auto">
           {/* Profile Details */}
-          <div className="lg:col-span-2 intelligence-card global">
+          <div className="intelligence-card global">
             <div className="p-8">
               <h3 className="text-lg font-bold text-nexus-text-primary mb-6">基本情報</h3>
               
@@ -439,30 +462,26 @@ export default function ProfilePage() {
                   )}
                 </div>
 
-                <div>
-                  {isEditing ? (
-                    <NexusInput
-                      type="text"
-                      label="部署"
-                      value={editForm?.department || ''}
-                      onChange={(e) => handleInputChange('department', e.target.value)}
-                    />
-                  ) : (
-                    <div>
-                      <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
-                        部署
-                      </label>
-                      <p className="text-nexus-text-primary">{profile.department || '未設定'}</p>
-                    </div>
-                  )}
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
-                    社員ID
-                  </label>
-                  <p className="text-nexus-text-primary">{profile.employeeId}</p>
-                </div>
+                {userType === 'staff' && (
+                  <div>
+                    {isEditing ? (
+                      <NexusInput
+                        type="text"
+                        label="社員ID"
+                        value={editForm?.employeeId || ''}
+                        onChange={(e) => handleInputChange('employeeId', e.target.value)}
+                      />
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
+                          社員ID
+                        </label>
+                        <p className="text-nexus-text-primary">{profile.employeeId}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
@@ -473,6 +492,82 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+
+          {/* Seller Business Information */}
+          {userType === 'seller' && (
+            <div className="intelligence-card global mt-6">
+              <div className="p-8">
+                <h3 className="text-lg font-bold text-nexus-text-primary mb-6">会社情報</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    {isEditing ? (
+                      <NexusInput
+                        type="text"
+                        label="会社名/屋号"
+                        value={editForm?.companyName || ''}
+                        onChange={(e) => handleInputChange('companyName', e.target.value)}
+                        placeholder="例: 山田商事株式会社"
+                      />
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
+                          会社名/屋号
+                        </label>
+                        <p className="text-nexus-text-primary">{profile.companyName || '未設定'}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    {isEditing ? (
+                      <div>
+                        <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
+                          事業形態
+                        </label>
+                        <select 
+                          className="w-full px-3 py-2 border border-nexus-border rounded-lg focus:ring-2 focus:ring-nexus-blue"
+                          value={editForm?.businessType || 'individual'}
+                          onChange={(e) => handleInputChange('businessType', e.target.value)}
+                        >
+                          <option value="individual">個人事業主</option>
+                          <option value="corporation">法人</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
+                          事業形態
+                        </label>
+                        <p className="text-nexus-text-primary">
+                          {profile.businessType === 'corporation' ? '法人' : '個人事業主'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    {isEditing ? (
+                      <NexusInput
+                        type="text"
+                        label="代表者名"
+                        value={editForm?.representativeName || ''}
+                        onChange={(e) => handleInputChange('representativeName', e.target.value)}
+                        placeholder="例: 山田 太郎"
+                      />
+                    ) : (
+                      <div>
+                        <label className="block text-sm font-medium text-nexus-text-secondary mb-2">
+                          代表者名
+                        </label>
+                        <p className="text-nexus-text-primary">{profile.representativeName || '未設定'}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Security Settings */}
@@ -660,7 +755,7 @@ export default function ProfilePage() {
                 checked={notificationSettings.sms}
                 onChange={(e) => handleNotificationChange('sms', e.target.checked)}
                 label="SMS通知"
-                description="緊急時にSMSで通知を受け取る"
+                description="重要な連絡をSMSで受け取る"
                 variant="nexus"
               />
             </div>

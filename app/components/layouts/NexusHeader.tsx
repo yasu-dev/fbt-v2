@@ -29,7 +29,8 @@ export default function NexusHeader({
   onMobileMenuToggle,
   isMobileMenuOpen = false
 }: NexusHeaderProps) {
-
+  // ベル機能を将来再利用できるよう最小限で無効化
+  const BELL_DISABLED = true;
   const [searchQuery, setSearchQuery] = useState('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -40,23 +41,63 @@ export default function NexusHeader({
   // ユーザータイプ切り替えのためのrouter
   const router = useRouter();
 
-  // 通知数を取得
+  // 通知数を取得（無効化時はスキップ）
   useEffect(() => {
+    if (BELL_DISABLED) {
+      setNotificationCount(0);
+      return;
+    }
+    let isMounted = true;
+    let interval: NodeJS.Timeout;
+
     const fetchNotificationCount = async () => {
       try {
-        const response = await fetch(`/api/notifications?role=${userType}`);
+        // 🔧 TEMP FIX: テスト用エンドポイントを使用
+        const endpoint = userType === 'staff' ? '/api/notifications/test' : `/api/notifications?role=${userType}`;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        const response = await fetch(endpoint, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
         const data = await response.json();
-        const unreadCount = data.filter((n: any) => !n.read).length;
-        setNotificationCount(unreadCount);
+        
+        if (isMounted && Array.isArray(data)) {
+          const unreadCount = data.filter((n: any) => !n.read).length;
+          setNotificationCount(unreadCount);
+          console.log('[DEBUG] 通知数更新:', unreadCount, '件 (エンドポイント:', endpoint, ')');
+        }
       } catch (error) {
-        console.error('Failed to fetch notification count:', error);
+        if (isMounted) {
+          console.error('Failed to fetch notification count:', error);
+          setNotificationCount(0); // エラー時は0にリセット
+        }
       }
     };
 
-    fetchNotificationCount();
-    // 定期的に通知数を更新
-    const interval = setInterval(fetchNotificationCount, 60000); // 1分ごと
-    return () => clearInterval(interval);
+    if (userType) {
+      fetchNotificationCount();
+      // 定期的に通知数を更新
+      interval = setInterval(fetchNotificationCount, 60000); // 1分ごと
+    }
+
+    return () => {
+      isMounted = false;
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+    // クリックや他関数からも参照できるようにwindowへ一時的に公開（開発用）
+    // @ts-ignore
+    (window as any).__fetchNotificationCount = fetchNotificationCount;
+
   }, [userType]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -76,7 +117,7 @@ export default function NexusHeader({
       {/* 背景シャインエフェクト */}
       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-transparent via-white/5 to-transparent" />
       
-      <div className="flex items-center gap-2 sm:gap-3 md:gap-4 lg:gap-6 z-10 flex-1">
+      <div className="flex items-center gap-2 sm:gap-3 md:gap-4 lg:gap-6 z-10">
         {/* モバイルハンバーガーメニューボタン */}
         <button
           id="mobile-menu-button"
@@ -102,8 +143,8 @@ export default function NexusHeader({
           <span className="hidden sm:block text-white font-bold text-sm">WORLD DOOR</span>
         </div>
         
-        {/* 検索バー - レスポンシブ対応 */}
-        <div className="flex-1 max-w-sm sm:max-w-md lg:max-w-xl">
+        {/* 検索バー - レスポンシブ対応 - 非表示化 */}
+        <div className="hidden flex-1 max-w-sm sm:max-w-md lg:max-w-xl">
           <form onSubmit={handleSearchSubmit} className="relative">
             <input
               type="text"
@@ -132,7 +173,9 @@ export default function NexusHeader({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <div>
-              <div className="font-mono text-sm font-semibold">{currentTime.jst}</div>
+              <div className="font-mono text-sm font-semibold" suppressHydrationWarning>
+                {currentTime.jst}
+              </div>
               <div className="text-[10px] opacity-80">日本時間</div>
             </div>
           </div>
@@ -140,30 +183,44 @@ export default function NexusHeader({
         
         {/* コンパクト時間表示（タブレット用） */}
         <div className="hidden md:block lg:hidden bg-white/10 backdrop-blur-xl border border-white/20 rounded-lg px-2 py-1 text-white">
-          <div className="font-mono text-xs font-semibold">{currentTime.jst}</div>
+          <div className="font-mono text-xs font-semibold" suppressHydrationWarning>
+            {currentTime.jst}
+          </div>
         </div>
         
-        {/* 通知ボタン - レスポンシブ対応 */}
-        <button
-          ref={notificationRef}
-          onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-          className="relative p-1.5 sm:p-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200"
-          aria-label="通知"
-        >
-          <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-          {notificationCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 bg-red-500 text-white text-[9px] sm:text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg animate-pulse">
-              {notificationCount > 9 ? '9+' : notificationCount}
-            </span>
-          )}
-        </button>
+        {/* 通知ボタン - 無効化 */}
+        {!BELL_DISABLED && (
+          <button
+            ref={notificationRef}
+            onClick={() => {
+              setIsNotificationOpen(!isNotificationOpen);
+              if (!isNotificationOpen && userType) {
+                // @ts-ignore
+                (window as any).__fetchNotificationCount?.();
+              }
+            }}
+            className="relative p-1.5 sm:p-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-lg text-white hover:bg-white/20 transition-all duration-200"
+            aria-label="通知"
+            data-testid="notification-bell"
+          >
+            <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            {notificationCount > 0 && (
+              <span 
+                className="absolute -top-1 -right-1 h-4 w-4 sm:h-5 sm:w-5 bg-red-500 text-white text-[9px] sm:text-[11px] font-bold rounded-full flex items-center justify-center shadow-lg animate-pulse"
+                data-testid="notification-badge"
+              >
+                {notificationCount > 9 ? '9+' : notificationCount}
+              </span>
+            )}
+          </button>
+        )}
         
-        {/* ユーザータイプ切り替えボタン */}
+        {/* ユーザータイプ切り替えボタン - テスト用のため非表示 */}
         <button
           onClick={handleUserTypeSwitch}
-          className="hidden sm:flex items-center gap-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-lg px-3 py-2 hover:bg-white/20 transition-all duration-200"
+          className="hidden"
           title={`${userType === 'staff' ? 'セラー' : 'スタッフ'}画面に切り替え`}
         >
           <svg className="w-4 h-4 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -187,9 +244,10 @@ export default function NexusHeader({
             <div className="text-white font-semibold text-sm">
               {userType === 'staff' ? 'スタッフ' : 'セラー'}
             </div>
-            <div className="text-[11px] text-white/70">
+            {/* Phase1: 管理者テキストを非表示 */}
+            {/* <div className="text-[11px] text-white/70">
               管理者
-            </div>
+            </div> */}
           </div>
           <svg className="w-3 h-3 sm:w-4 sm:h-4 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -197,21 +255,36 @@ export default function NexusHeader({
         </button>
       </div>
       
-      {/* 通知パネル */}
-      <EnhancedNotificationPanel
-        isOpen={isNotificationOpen}
-        onClose={() => setIsNotificationOpen(false)}
-        userType={userType}
-        anchorRef={notificationRef}
-      />
+      {/* 通知パネル - 無効化 */}
+      {!BELL_DISABLED && isNotificationOpen && notificationRef.current && (
+        <EnhancedNotificationPanel
+          isOpen={isNotificationOpen}
+          onClose={() => {
+            setIsNotificationOpen(false);
+            if (userType) {
+              // @ts-ignore
+              (window as any).__fetchNotificationCount?.();
+            }
+          }}
+          userType={userType}
+          anchorRef={notificationRef}
+          onNotificationUpdate={(unreadCount) => {
+            setNotificationCount(unreadCount);
+          }}
+        />
+      )}
       
       {/* プロフィールメニュー */}
-      <ProfileMenu
-        userType={userType}
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-        anchorRef={profileRef}
-      />
+      {isProfileOpen && (
+        <ProfileMenu
+          userType={userType}
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+          onSettingsClick={onSettingsClick}
+          onLogout={onLogout}
+          anchorRef={profileRef}
+        />
+      )}
     </header>
   );
 }

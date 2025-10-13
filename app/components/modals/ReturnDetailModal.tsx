@@ -90,7 +90,7 @@ export default function ReturnDetailModal({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
+        return 'bg-orange-600 text-white';
       case 'approved':
         return 'bg-green-100 text-green-800';
       case 'rejected':
@@ -151,8 +151,8 @@ export default function ReturnDetailModal({
         <div className="flex border-b border-nexus-border">
           {[
             { id: 'details', label: '詳細情報' },
-            { id: 'timeline', label: '履歴' },
-            { id: 'documents', label: '書類' }
+            { id: 'timeline', label: '履歴' }
+            // 書類タブは表示しない仕様のため削除
           ].map((tab) => (
             <NexusButton
               key={tab.id}
@@ -238,8 +238,8 @@ export default function ReturnDetailModal({
               <div className="space-y-3">
                 {[
                   { date: '2024-07-05 14:30', user: 'システム', action: '返品申請を受付' },
-                  { date: '2024-07-05 15:15', user: '田中スタッフ', action: '初期確認完了' },
-                  { date: '2024-07-05 16:00', user: '佐藤マネージャー', action: '承認済み' },
+                  { date: '2024-07-05 15:15', user: 'スタッフ', action: '初期確認完了' },
+                  { date: '2024-07-05 16:00', user: 'スタッフ', action: '承認済み' },
                   { date: '2024-07-05 16:30', user: 'システム', action: '返品ラベル発行' }
                 ].map((event, index) => (
                   <div key={index} className="flex space-x-3">
@@ -271,51 +271,7 @@ export default function ReturnDetailModal({
             </div>
           )}
 
-          {activeTab === 'documents' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-nexus-text-primary">
-                関連書類
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {[
-                  { name: '返品申請書', type: 'PDF', size: '245 KB' },
-                  { name: '商品画像1', type: 'JPG', size: '1.2 MB' },
-                  { name: '商品画像2', type: 'JPG', size: '980 KB' },
-                  { name: '購入時レシート', type: 'PDF', size: '156 KB' }
-                ].map((doc, index) => (
-                  <div key={index} className="flex items-center space-x-3 p-3 border border-nexus-border rounded-lg bg-nexus-bg-primary">
-                    <div className="flex-shrink-0">
-                      <svg className="w-8 h-8 text-nexus-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-nexus-text-primary truncate">
-                        {doc.name}
-                      </p>
-                      <p className="text-xs text-nexus-text-secondary">
-                        {doc.type} • {doc.size}
-                      </p>
-                    </div>
-                    <NexusButton
-                      onClick={() => {
-                        showToast({
-                          title: 'ファイルダウンロード',
-                          message: `${doc.name}をダウンロードしました`,
-                          type: 'success'
-                        });
-                      }}
-                      variant="secondary"
-                      size="sm"
-                    >
-                      ダウンロード
-                    </NexusButton>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* 書類タブは表示しない仕様のため削除 */}
         </div>
 
         {/* Footer */}

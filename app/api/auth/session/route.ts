@@ -5,44 +5,30 @@ export async function GET(request: NextRequest) {
   try {
     const user = await AuthService.getUserFromRequest(request);
 
-    if (!user) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: '認証が必要です',
-          authenticated: false 
-        },
-        { status: 200 }
-      );
+    if (user) {
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          role: user.role,
+          fullName: user.fullName,
+          phoneNumber: user.phoneNumber,
+          address: user.address
+        }
+      });
     }
-
+    
     return NextResponse.json({
-      success: true,
-      user,
+      success: false,
+      message: 'Not authenticated'
     });
   } catch (error) {
-    console.error('Session validation error:', error);
-    return NextResponse.json(
-      { error: 'セッション確認中にエラーが発生しました' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(request: NextRequest) {
-  try {
-    // Clean up expired sessions (maintenance endpoint)
-    await AuthService.cleanExpiredSessions();
-
+    console.error('Session check error:', error);
     return NextResponse.json({
-      success: true,
-      message: '期限切れセッションを削除しました',
-    });
-  } catch (error) {
-    console.error('Session cleanup error:', error);
-    return NextResponse.json(
-      { error: 'セッション削除中にエラーが発生しました' },
-      { status: 500 }
-    );
+      success: false,
+      error: 'Failed to check session'
+    }, { status: 500 });
   }
 }

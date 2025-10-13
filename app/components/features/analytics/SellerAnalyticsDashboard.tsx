@@ -367,7 +367,7 @@ export default function SellerAnalyticsDashboard() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-nexus-border">
-                  <th className="text-left p-4 font-medium text-nexus-text-secondary">カテゴリー</th>
+                  <th className="text-center p-4 font-medium text-nexus-text-secondary">カテゴリー</th>
                   <th className="text-right p-4 font-medium text-nexus-text-secondary">売上</th>
                   <th className="text-right p-4 font-medium text-nexus-text-secondary">商品数</th>
                   <th className="text-right p-4 font-medium text-nexus-text-secondary">平均価格</th>

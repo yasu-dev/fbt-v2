@@ -261,8 +261,8 @@ export default function ListingHistory() {
                 <th className="text-left py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">出品日</th>
                 <th className="text-left py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">販売価格</th>
                 <th className="text-left py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">閲覧/ウォッチ</th>
-                <th className="text-left py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">ステータス</th>
-                <th className="text-right py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">アクション</th>
+                <th className="text-center py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">ステータス</th>
+                <th className="text-center py-2 sm:py-3 px-2 sm:px-4 text-xs sm:text-sm">アクション</th>
               </tr>
             </thead>
             <tbody className="holo-body">

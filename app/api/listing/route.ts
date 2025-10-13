@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
-import { MockFallback } from '@/lib/mock-fallback';
 
 const prisma = new PrismaClient();
 
@@ -8,63 +7,86 @@ const prisma = new PrismaClient();
 export async function GET(request: NextRequest) {
   try {
     // Prismaを使用して出品データを取得
-    // TODO: 実際のPrismaクエリを実装する際は、以下のような構造になる
-    // const templates = await prisma.listingTemplate.findMany(...);
-    // const products = await prisma.product.findMany({ where: { status: 'ready' } });
-    
-    // 現在はモックデータを返す（Prismaスキーマが整備されるまで）
+    const templates = await prisma.listingTemplate.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const products = await prisma.product.findMany({
+      where: { status: { in: ['storage', 'listing'] } },
+      include: {
+        listings: true,
+        currentLocation: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    });
+
+    // 統計データを計算
+    const totalActiveListings = await prisma.listing.count({
+      where: { status: 'active' }
+    });
+
+    const pendingListingProducts = await prisma.product.count({
+      where: { status: 'storage' }
+    });
+
+    const soldThisMonth = await prisma.listing.count({
+      where: {
+        status: 'sold',
+        soldAt: {
+          gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+        }
+      }
+    });
+
+    const avgPriceResult = await prisma.listing.aggregate({
+      _avg: { price: true },
+      where: { status: 'active' }
+    });
+
+    const platformStats = await prisma.listing.groupBy({
+      by: ['platform'],
+      _count: { _all: true },
+      where: { status: 'active' }
+    });
+
+    const platformCounts = platformStats.reduce((acc, stat) => {
+      acc[stat.platform] = stat._count._all;
+      return acc;
+    }, {} as Record<string, number>);
+
     const listings = {
-      templates: [
-        {
-          id: 'TPL-001',
-          name: 'カメラボディ標準テンプレート',
-          category: 'camera_body',
-          platform: 'ebay',
-          basePrice: 100000,
-          currency: 'JPY',
-          condition: 'Used - Excellent',
-          shippingMethod: 'FedEx International',
-          isActive: true,
-          createdAt: '2024-01-15',
-          updatedAt: '2024-01-20',
-          appliedCount: 45,
-          fields: {
-            title: '{BRAND} {MODEL} {CONDITION} - Japan Seller',
-            description: 'Professional camera body in excellent condition...',
-            shippingTime: '3-5 business days',
-            returnPolicy: '30 days',
-          },
+      templates: templates.map(template => ({
+        ...template,
+        fields: template.fields ? JSON.parse(template.fields) : null,
+      })),
+      products: products.map(product => ({
+        id: product.id,
+        name: product.name,
+        sku: product.sku,
+        category: product.category,
+        status: product.status === 'storage' ? 'ready' : product.status,
+        listingStatus: {
+          ebay: product.listings.some(l => l.platform === 'ebay' && l.status === 'active'),
+          amazon: product.listings.some(l => l.platform === 'amazon' && l.status === 'active'),
+          mercari: product.listings.some(l => l.platform === 'mercari' && l.status === 'active'),
+          yahoo: product.listings.some(l => l.platform === 'yahoo' && l.status === 'active'),
         },
-      ],
-      products: [
-        {
-          id: 'TWD-2024-001',
-          name: 'Canon EOS R5 ボディ',
-          sku: 'CAM-001',
-          category: 'camera_body',
-          status: 'ready',
-          listingStatus: {
-            ebay: false,
-            amazon: false,
-            mercari: false,
-            yahoo: false,
-          },
-          price: 280000,
-          images: ['/api/placeholder/150/150'],
-          condition: 'Excellent',
-          description: 'Mint condition, low shutter count',
-        },
-      ],
+        price: product.price,
+        images: [product.imageUrl || '/api/placeholder/150/150'],
+        condition: product.condition,
+        description: product.description,
+      })),
       stats: {
-        totalActive: 156,
-        pendingListing: 24,
-        soldThisMonth: 89,
-        averagePrice: 215000,
+        totalActive: totalActiveListings,
+        pendingListing: pendingListingProducts,
+        soldThisMonth: soldThisMonth,
+        averagePrice: Math.round(avgPriceResult._avg.price || 0),
         platforms: {
-          ebay: 89,
-          amazon: 45,
-          mercari: 12,
-          yahoo: 10,
+          ebay: platformCounts.ebay || 0,
+          amazon: platformCounts.amazon || 0,
+          mercari: platformCounts.mercari || 0,
+          yahoo: platformCounts.yahoo || 0,
         },
       },
     };
@@ -72,32 +94,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(listings);
   } catch (error) {
     console.error('[ERROR] GET /api/listing:', error);
-    
-    // Prismaエラーの場合はフォールバックデータを使用
-    if (MockFallback.isPrismaError(error)) {
-      console.log('Using fallback data for listing due to Prisma error');
-      try {
-        const fallbackData = {
-          templates: [],
-          products: [],
-          stats: {
-            totalActive: 0,
-            pendingListing: 0,
-            soldThisMonth: 0,
-            averagePrice: 0,
-            platforms: {
-              ebay: 0,
-              amazon: 0,
-              mercari: 0,
-              yahoo: 0,
-            },
-          },
-        };
-        return NextResponse.json(fallbackData);
-      } catch (fallbackError) {
-        console.error('Fallback data error:', fallbackError);
-      }
-    }
     
     return NextResponse.json(
       { error: 'Failed to fetch listing data' },
@@ -110,30 +106,139 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { productId, platform, templateId, customSettings } = body;
+    const { productId, platform, templateId, customSettings, productUpdates, computerImages, photographyImageUrls } = body;
 
-    // 実際の実装では:
-    // 1. 商品情報を取得
-    // 2. テンプレートを適用
-    // 3. プラットフォームAPIに出品
-    // 4. DBに記録
-
-    const newListing = {
-      id: `LIST-${Date.now()}`,
+    console.log('🚀 /api/listing POST: 出品処理開始', {
       productId,
       platform,
-      templateId,
-      status: 'active',
-      listedAt: new Date().toISOString(),
-      url: `https://${platform}.com/item/${Date.now()}`,
-      ...customSettings,
-    };
+      customSettings,
+      productUpdates,
+      computerImagesCount: computerImages?.length || 0,
+      photographyImagesCount: photographyImageUrls?.length || 0
+    });
 
-    return NextResponse.json(newListing, { status: 201 });
+    // 商品情報を取得
+    const product = await prisma.product.findUnique({
+      where: { id: productId }
+    });
+
+    if (!product) {
+      console.error('❌ 商品が見つかりません:', productId);
+      return NextResponse.json(
+        { error: 'Product not found' },
+        { status: 404 }
+      );
+    }
+
+    // トランザクションで商品更新と出品作成を行う
+    const result = await prisma.$transaction(async (tx) => {
+      // 商品情報を更新（customSettingsまたはproductUpdatesから）
+      const updateData: any = { status: 'listing' };
+      
+      if (customSettings?.title) {
+        updateData.name = customSettings.title;
+      }
+      if (customSettings?.description) {
+        updateData.description = customSettings.description;
+      }
+      if (customSettings?.price) {
+        updateData.price = customSettings.price;
+      }
+      
+      // 追加の商品更新データがある場合
+      if (productUpdates) {
+        Object.assign(updateData, productUpdates);
+      }
+
+      console.log('🔄 商品テーブル更新データ:', updateData);
+
+      const updatedProduct = await tx.product.update({
+        where: { id: productId },
+        data: updateData
+      });
+
+      console.log('✅ 商品テーブル更新完了');
+
+      // テンプレート情報を取得（指定されている場合）
+      let template = null;
+      if (templateId) {
+        template = await tx.listingTemplate.findUnique({
+          where: { id: templateId }
+        });
+      }
+
+      // 新規出品を作成
+      const newListing = await tx.listing.create({
+        data: {
+          productId,
+          templateId,
+          platform: platform || 'ebay',
+          listingId: `${(platform || 'ebay').toUpperCase()}-${Date.now()}`,
+          title: customSettings?.title || updatedProduct.name || `${product.name} - ${product.condition}`,
+          description: customSettings?.description || updatedProduct.description || product.description || '',
+          price: customSettings?.price || updatedProduct.price || product.price,
+          status: 'active',
+          listedAt: new Date(),
+        }
+      });
+
+      console.log('✅ Listing作成完了:', newListing.id);
+
+      // 画像処理: コンピューター画像とスタッフ撮影画像を統合
+      const allImageUrls: string[] = [];
+
+      // スタッフ撮影画像のURLを追加
+      if (photographyImageUrls && photographyImageUrls.length > 0) {
+        allImageUrls.push(...photographyImageUrls);
+        console.log('📸 スタッフ撮影画像を追加:', photographyImageUrls.length, '枚');
+      }
+
+      // コンピューター画像のBase64データを処理（必要に応じて保存）
+      if (computerImages && computerImages.length > 0) {
+        console.log('💻 コンピューター画像を処理:', computerImages.length, '枚');
+        // Note: computerImagesはBase64データとして送信されているため、
+        // 実際のeBay API連携時にはこれらの画像をアップロード処理する必要があります
+        allImageUrls.push(...computerImages);
+      }
+
+      // リスティングに画像情報を更新
+      if (allImageUrls.length > 0) {
+        await tx.listing.update({
+          where: { id: newListing.id },
+          data: {
+            images: JSON.stringify(allImageUrls)
+          }
+        });
+        console.log('🖼️ リスティング画像を更新:', allImageUrls.length, '枚');
+      }
+
+      // テンプレートの使用回数を更新
+      if (template) {
+        await tx.listingTemplate.update({
+          where: { id: templateId },
+          data: { appliedCount: { increment: 1 } }
+        });
+      }
+
+      return { listing: newListing, product: updatedProduct, imageCount: allImageUrls.length };
+    });
+
+    console.log('🎉 出品処理完了');
+    return NextResponse.json({
+      success: true,
+      data: result.listing,
+      product: result.product,
+      imageCount: result.imageCount || 0,
+      message: `出品が完了しました。${result.imageCount || 0}枚の画像が含まれています。`
+    }, { status: 201 });
   } catch (error) {
     console.error('[ERROR] POST /api/listing:', error);
     return NextResponse.json(
-      { error: 'Failed to create listing' },
+      { 
+        success: false,
+        error: 'Failed to create listing',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
@@ -145,16 +250,13 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const { listingId, updates } = body;
 
-    // 実際の実装では:
-    // 1. 既存の出品情報を取得
-    // 2. プラットフォームAPIで更新
-    // 3. DBを更新
-
-    const updatedListing = {
-      id: listingId,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
+    const updatedListing = await prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        ...updates,
+        updatedAt: new Date(),
+      }
+    });
 
     return NextResponse.json(updatedListing);
   } catch (error) {
@@ -179,9 +281,16 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 実際の実装では:
-    // 1. プラットフォームAPIから削除
-    // 2. DBから削除
+    // 出品を削除
+    const deletedListing = await prisma.listing.delete({
+      where: { id: listingId }
+    });
+
+    // 商品ステータスを保管中に戻す
+    await prisma.product.update({
+      where: { id: deletedListing.productId },
+      data: { status: 'storage' }
+    });
 
     return NextResponse.json({ success: true, id: listingId });
   } catch (error) {
@@ -191,4 +300,4 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     );
   }
-} 
+}

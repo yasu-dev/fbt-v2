@@ -20,11 +20,12 @@ module.exports = {
         'nexus-background': 'var(--background)',
         'nexus-surface': 'var(--surface)',
         'nexus-bg-primary': 'var(--background)',
-        'nexus-bg-secondary': 'var(--surface)',
-        'nexus-text-primary': 'var(--text-primary)',
-        'nexus-text-secondary': 'var(--text-secondary)',
-        'nexus-text-muted': 'var(--text-muted)',
-        'nexus-border': 'var(--border)',
+        'nexus-bg-secondary': 'var(--nexus-bg-secondary)',
+        'nexus-bg-tertiary': 'var(--nexus-bg-tertiary)',
+        'nexus-text-primary': 'var(--nexus-text-primary)',
+        'nexus-text-secondary': 'var(--nexus-text-secondary)',
+        'nexus-text-muted': 'var(--nexus-text-muted)',
+        'nexus-border': 'var(--nexus-border)',
         
         // 地域別カラーリング (6地域システム)
         'region-americas': 'rgba(0, 100, 210, 0.35)',

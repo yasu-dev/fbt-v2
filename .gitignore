@@ -21,6 +21,7 @@ yarn.lock
 # OS files
 .DS_Store
 Thumbs.db
+NUL
 
 # Build outputs
 .next/
@@ -34,6 +35,9 @@ temp-*/
 *.tmp
 *.temp
 
+# Uploaded files
+uploads/
+
 # Test outputs
 coverage/
 .nyc_output/
@@ -43,6 +47,9 @@ playwright-report/
 # Backup files
 *.backup
 *.bak
+*.backup.*
+*inspection.backup.*
+app/staff/inspection.backup.*
 
 # Development files
 *.dev.*
@@ -74,3 +81,13 @@ working-*.html
 simple-*.html
 ultra-*.html
 api-*.html
+
+# Prisma database files
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+*.db-journal
+
+# Generated HTML docs (except docs/index.html)
+docs/**/*.html
+!docs/index.html

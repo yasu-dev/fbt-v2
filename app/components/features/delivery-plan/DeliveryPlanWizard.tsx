@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import NexusButton from '@/app/components/ui/NexusButton';
 import NexusCard from '@/app/components/ui/NexusCard';
 import BasicInfoStep from './BasicInfoStep';
 import ProductRegistrationStep from './ProductRegistrationStep';
 import ConfirmationStep from './ConfirmationStep';
 import { useToast } from '@/app/components/features/notifications/ToastProvider';
+import { useAlert } from '@/app/components/ui/AlertProvider';
 
 interface WizardStep {
   id: number;
@@ -16,10 +17,9 @@ interface WizardStep {
 
 interface DeliveryPlanData {
   basicInfo: {
-    sellerName: string;
+    warehouseId: string;
+    warehouseName: string;
     deliveryAddress: string;
-    contactEmail: string;
-    phoneNumber: string;
     notes?: string;
   };
   products: Array<{
@@ -45,15 +45,16 @@ const steps: WizardStep[] = [
 
 export default function DeliveryPlanWizard() {
   const { showToast } = useToast();
+  const { showAlert } = useAlert();
+  
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [planData, setPlanData] = useState<DeliveryPlanData>({
     basicInfo: {
-      sellerName: '',
+      warehouseId: '',
+      warehouseName: '',
       deliveryAddress: '',
-      contactEmail: '',
-      phoneNumber: '',
     },
     products: [],
     confirmation: {
@@ -62,16 +63,69 @@ export default function DeliveryPlanWizard() {
     },
   });
 
+  // ステップ変更時にページトップにスクロール - 確実な実装
+  useEffect(() => {
+    console.log('[DeliveryPlanWizard] ステップ変更:', currentStep);
+    
+    // DOM準備完了まで待機してからスクロール
+    const scrollToTop = () => {
+      // DashboardLayout内のスクロールコンテナを取得
+      const scrollContainer = document.querySelector('.page-scroll-container');
+      if (scrollContainer) {
+        console.log('[DeliveryPlanWizard] スクロールコンテナ発見、最上部へ移動');
+        // 即座に最上部に移動（確認画面なので滑らかさより確実性を優先）
+        scrollContainer.scrollTop = 0;
+      } else {
+        console.log('[DeliveryPlanWizard] スクロールコンテナ未発見、windowスクロール使用');
+        // フォールバック
+        window.scrollTo(0, 0);
+      }
+    };
+
+    // 即座に実行
+    scrollToTop();
+    
+    // DOM準備のため少し遅延してもう一度実行
+    const timeoutId = setTimeout(scrollToTop, 100);
+    
+    return () => clearTimeout(timeoutId);
+  }, [currentStep]);
+
   const updatePlanData = (stepData: Partial<DeliveryPlanData>) => {
-    setPlanData(prev => ({ ...prev, ...stepData }));
+    setPlanData(prev => {
+      const updated = { ...prev, ...stepData };
+      // productsが常に配列であることを保証
+      if ('products' in stepData && !Array.isArray(updated.products)) {
+        updated.products = [];
+      }
+      return updated;
+    });
+  };
+
+  const scrollToTop = () => {
+    console.log('[DeliveryPlanWizard] スクロール処理実行');
+    const scrollContainer = document.querySelector('.page-scroll-container');
+    if (scrollContainer) {
+      console.log('[DeliveryPlanWizard] .page-scroll-container発見、スクロール実行');
+      scrollContainer.scrollTop = 0;
+    } else {
+      console.log('[DeliveryPlanWizard] .page-scroll-container未発見、window使用');
+      window.scrollTo(0, 0);
+    }
   };
 
   const nextStep = () => {
+    console.log('[DeliveryPlanWizard] nextStep実行');
     setCurrentStep(prev => Math.min(prev + 1, steps.length - 1));
+    // ステップ変更後に即座にスクロール
+    setTimeout(scrollToTop, 50);
   };
 
   const prevStep = () => {
+    console.log('[DeliveryPlanWizard] prevStep実行');
     setCurrentStep(prev => Math.max(prev - 1, 0));
+    // ステップ変更後に即座にスクロール
+    setTimeout(scrollToTop, 50);
   };
 
   const submitPlan = async () => {
@@ -79,33 +133,183 @@ export default function DeliveryPlanWizard() {
       setLoading(true);
       setError(null);
 
+      console.log('[DEBUG] 送信データ:', planData);
+      console.log('[DEBUG] basicInfo:', planData.basicInfo);
+      console.log('[DEBUG] products:', planData.products?.length, '件');
+      if (planData.products) {
+        planData.products.forEach((product: any, index: number) => {
+          console.log(`[DEBUG] 商品${index + 1}:`, {
+            name: product?.name,
+            condition: product?.condition,
+            purchasePrice: product?.purchasePrice,
+            photographyRequest: product?.photographyRequest,
+            photographyType: product?.photographyRequest?.photographyType,
+            premiumPacking: product?.premiumPacking
+          });
+        });
+      }
+
       const response = await fetch('/api/delivery-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(planData),
       });
 
+      const result = await response.json();
+      console.log('[DEBUG] API応答:', result);
+      console.log('[DEBUG] レスポンスステータス:', response.status);
+      console.log('[DEBUG] レスポンスOK:', response.ok);
+      
       if (!response.ok) {
-        throw new Error('納品プランの作成に失敗しました');
+        // 具体的なエラーメッセージを表示
+        let errorMessage = '納品プランの作成に失敗しました。';
+        
+        if (result.error) {
+          errorMessage = result.error;
+        } else if (response.status === 400) {
+          errorMessage = '入力データに問題があります。以下をご確認ください：\n' +
+                       '• 配送先倉庫が選択されているか\n' +
+                       '• 商品が登録されているか\n' +
+                       '• 必要な情報が入力されているか';
+        } else if (response.status === 401) {
+          errorMessage = 'ログインが必要です。再度ログインしてください。';
+        } else if (response.status === 500) {
+          errorMessage = 'サーバーエラーが発生しました。しばらくしてから再度お試しください。';
+        }
+        
+        showAlert({
+          type: 'error',
+          title: '納品プラン作成エラー',
+          message: errorMessage,
+          actions: [
+            {
+              label: '確認',
+              action: () => {},
+              variant: 'primary'
+            }
+          ]
+        });
+        return;
       }
 
-      const result = await response.json();
-      
+      // 成功の場合
       // PDFダウンロード処理
       if (result.pdfUrl) {
-        window.open(result.pdfUrl, '_blank');
+        console.log('[DEBUG] PDF URL:', result.pdfUrl);
+        try {
+          // PDFを取得してBase64で表示
+          const pdfResponse = await fetch(result.pdfUrl);
+          if (pdfResponse.ok) {
+            const pdfData = await pdfResponse.json();
+            if (pdfData.success && pdfData.base64Data) {
+              try {
+                console.log('[DEBUG] PDF Base64データ長:', pdfData.base64Data.length);
+                
+                // Base64データをバイナリに変換
+                const binaryString = atob(pdfData.base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                
+                for (let i = 0; i < binaryString.length; i++) {
+                  bytes[i] = binaryString.charCodeAt(i);
+                }
+                
+                console.log('[DEBUG] PDF バイト配列作成完了:', bytes.length, 'bytes');
+                
+                // PDFブロブを作成
+                const pdfBlob = new Blob([bytes], { type: 'application/pdf' });
+                console.log('[DEBUG] PDF Blob作成完了:', pdfBlob.size, 'bytes');
+                
+                // ダウンロードリンクを作成してクリック
+                const pdfUrl = URL.createObjectURL(pdfBlob);
+                const downloadLink = document.createElement('a');
+                downloadLink.href = pdfUrl;
+                downloadLink.download = `delivery-plan-${result.planId || 'unknown'}-barcodes.pdf`;
+                downloadLink.style.display = 'none';
+                
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                
+                console.log('[DEBUG] PDFダウンロード完了');
+                
+                // 少し遅延してURLを解放
+                setTimeout(() => {
+                  URL.revokeObjectURL(pdfUrl);
+                  console.log('[DEBUG] PDF URL解放完了');
+                }, 2000);
+                
+              } catch (pdfProcessError) {
+                console.error('[ERROR] PDF処理エラー:', pdfProcessError);
+                throw pdfProcessError;
+              }
+            } else {
+              console.error('[ERROR] PDF generation failed:', pdfData);
+              showAlert({
+                type: 'error',
+                title: 'PDFダウンロードエラー',
+                message: 'PDFの生成に失敗しました。',
+                actions: [{ label: '確認', action: () => {}, variant: 'primary' }]
+              });
+            }
+          } else {
+            console.error('[ERROR] PDF fetch failed:', pdfResponse.status);
+            showAlert({
+              type: 'error',
+              title: 'PDFダウンロードエラー',
+              message: 'PDFの取得に失敗しました。',
+              actions: [{ label: '確認', action: () => {}, variant: 'primary' }]
+            });
+          }
+        } catch (pdfError) {
+          console.error('[ERROR] PDF display error:', pdfError);
+          showAlert({
+            type: 'error',
+            title: 'PDFダウンロードエラー',
+            message: 'PDFの表示でエラーが発生しました。',
+            actions: [{ label: '確認', action: () => {}, variant: 'primary' }]
+          });
+        }
       }
       
       // 成功メッセージ表示後、リダイレクト
-      showToast({
+      showAlert({
         type: 'success',
         title: '納品プラン作成完了',
-        message: 'デモモードのため、実際の保存は行われません。プランは一時的に表示されます。',
-        duration: 4000
+        message: `納品プラン「${result.planId}」が正常に作成されました。`,
+        actions: [
+          {
+            label: '納品管理画面へ',
+            action: () => {
+              window.location.href = '/delivery';
+            },
+            variant: 'primary'
+          }
+        ]
       });
-      window.location.href = '/inventory';
+      
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'エラーが発生しました');
+      console.error('[ERROR] 納品プラン送信エラー:', err);
+      console.error('[ERROR] エラータイプ:', typeof err);
+      console.error('[ERROR] エラー内容:', err);
+      
+      // ネットワークエラーなどの場合はアラートボックスで対処を促す
+      showAlert({
+        type: 'error',
+        title: '接続エラー',
+        message: 'サーバーとの通信に失敗しました。しばらく時間をおいて再度お試しください。',
+        actions: [
+          {
+            label: '再試行',
+            action: () => submitPlan(),
+            variant: 'primary'
+          },
+          {
+            label: '閉じる',
+            action: () => {},
+            variant: 'secondary'
+          }
+        ]
+      });
     } finally {
       setLoading(false);
     }
@@ -126,13 +330,13 @@ export default function DeliveryPlanWizard() {
               <div
                 className={`
                   w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium
-                  ${currentStep >= index + 1
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-600'
+                  ${currentStep >= index
+                    ? 'bg-primary-blue text-white'
+                    : 'bg-nexus-bg-tertiary text-nexus-text-secondary border border-nexus-border'
                   }
                 `}
               >
-                {currentStep > index + 1 ? (
+                {currentStep > index ? (
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                   </svg>
@@ -142,7 +346,7 @@ export default function DeliveryPlanWizard() {
               </div>
               <span 
                 className={`ml-2 font-medium hidden sm:inline ${
-                  currentStep >= index + 1 ? 'text-blue-600' : 'text-gray-500'
+                  currentStep >= index ? 'text-primary-blue' : 'text-nexus-text-secondary'
                 }`}
                 data-testid={`step-${step.id}-label`}
               >
@@ -153,7 +357,7 @@ export default function DeliveryPlanWizard() {
               <div className="flex-1 mx-4">
                 <div
                   className={`h-1 rounded-full ${
-                    currentStep > index + 1 ? 'bg-blue-600' : 'bg-gray-200'
+                    currentStep > index ? 'bg-primary-blue' : 'bg-nexus-border'
                   }`}
                 />
               </div>
@@ -184,4 +388,4 @@ export default function DeliveryPlanWizard() {
       </NexusCard>
     </div>
   );
-} 
+}

@@ -28,28 +28,47 @@ export default function ProfileMenu({ userType, isOpen, onClose, anchorRef }: Pr
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isProfilePage, setIsProfilePage] = useState(false);
   const { showToast } = useToast();
 
-  // ユーザープロフィールデータ（実際の実装では API から取得）
+  // 現在のページがプロフィール設定ページかどうかを判定
   useEffect(() => {
-    if (userType === 'seller') {
-      setProfile({
-        name: '山田 太郎',
-        email: 'yamada@example.com',
-        role: 'プレミアムセラー',
-        joinDate: '2023年4月',
-        lastLogin: '2025年1月26日 10:30'
-      });
-    } else {
-      setProfile({
-        name: '鈴木 花子',
-        email: 'suzuki@theworlddoor.com',
-        role: 'シニアスタッフ',
-        joinDate: '2022年10月',
-        lastLogin: '2025年1月26日 08:00'
-      });
-    }
-  }, [userType]);
+    const currentPath = window.location.pathname;
+    setIsProfilePage(currentPath === '/profile');
+  }, []);
+
+  // ユーザープロフィールデータをAPIから取得（失敗時は非表示）
+  useEffect(() => {
+    let isMounted = true;
+    const fetchProfile = async () => {
+      try {
+        const res = await fetch('/api/auth/session', {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (!res.ok) {
+          setProfile(null);
+          return;
+        }
+        const data = await res.json();
+        if (isMounted && data?.success && data?.user) {
+          setProfile({
+            name: data.user.fullName || data.user.username || data.user.email,
+            email: data.user.email,
+            role: data.user.role === 'admin' ? '管理者' : (data.user.role === 'staff' ? 'シニアスタッフ' : 'プレミアムセラー'),
+            joinDate: new Date().toLocaleDateString('ja-JP'),
+            lastLogin: new Date().toLocaleString('ja-JP')
+          });
+        } else {
+          setProfile(null);
+        }
+      } catch {
+        setProfile(null);
+      }
+    };
+    if (isOpen) fetchProfile();
+    return () => { isMounted = false; };
+  }, [isOpen]);
 
   // メニューの位置を計算
   useEffect(() => {
@@ -81,6 +100,15 @@ export default function ProfileMenu({ userType, isOpen, onClose, anchorRef }: Pr
 
   const handleLogout = async () => {
     try {
+      // APIでサーバー側セッションを無効化
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch {}
+
       // LocalStorageのクリア
       localStorage.removeItem('userProfile');
       localStorage.removeItem('userSettings');
@@ -133,11 +161,12 @@ export default function ProfileMenu({ userType, isOpen, onClose, anchorRef }: Pr
         <div className="bg-gray-50 border-b border-gray-200 p-4">
           <div className="flex items-center space-x-3">
             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-lg font-bold text-blue-600">
-              {profile.name.charAt(0)}
+              {isProfilePage ? 'P' : profile.name.charAt(0)}
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">{profile.name}</h3>
-              <p className="text-xs text-gray-600">{profile.role}</p>
+              <h3 className="text-sm font-semibold text-gray-900">
+                {isProfilePage ? 'プロフィール設定' : profile.name}
+              </h3>
             </div>
           </div>
         </div>

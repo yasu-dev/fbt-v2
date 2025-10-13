@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/lib/auth';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 // 画像の最大サイズ（バイト）
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -17,6 +19,8 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       );
     }
+    
+    console.log('[DEBUG] 画像アップロード処理開始 - ユーザー:', user.email);
 
     // フォームデータを取得
     const formData = await request.formData();
@@ -81,13 +85,38 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 画像をストレージにアップロード（モック実装）
+// 画像をストレージにアップロード（ローカルファイルシステム実装）
 async function uploadToStorage(file: File, productId: string, category: string): Promise<string> {
-  // 実際の実装では、AWS S3、Cloudinary、Vercel Blob等を使用
-  // ここではモックURLを返す
-  const timestamp = Date.now();
-  const randomId = Math.random().toString(36).substr(2, 9);
-  return `/api/images/${productId}/${category}/${timestamp}-${randomId}-${file.name}`;
+  try {
+    // uploadsディレクトリの作成
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const productDir = path.join(uploadsDir, productId);
+    const categoryDir = path.join(productDir, category);
+
+    // ディレクトリを再帰的に作成
+    await fs.mkdir(categoryDir, { recursive: true });
+
+    // ファイル名を生成
+    const timestamp = Date.now();
+    const randomId = Math.random().toString(36).substr(2, 9);
+    const filename = `${timestamp}-${randomId}-${file.name}`;
+    const filePath = path.join(categoryDir, filename);
+
+    // ファイルをバッファに変換
+    const bytes = await file.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+
+    // ファイルを保存
+    await fs.writeFile(filePath, buffer);
+
+    console.log('[DEBUG] 画像保存完了:', filePath);
+
+    // APIのURLを返す
+    return `/api/images/${productId}/${category}/${filename}`;
+  } catch (error) {
+    console.error('[ERROR] 画像保存エラー:', error);
+    throw new Error('画像の保存に失敗しました');
+  }
 }
 
 // 画像の削除

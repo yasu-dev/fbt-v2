@@ -38,24 +38,25 @@ const NexusCheckbox = forwardRef<HTMLInputElement, NexusCheckboxProps>(({
       checked:bg-blue-600 checked:border-blue-600
     `,
     nexus: `
-      border-nexus-border text-primary-blue
-      focus:ring-primary-blue focus:ring-offset-0
-      checked:bg-primary-blue checked:border-primary-blue
-      hover:border-primary-blue/50
+      border-2 border-nexus-border text-primary-blue bg-white
+      focus:ring-primary-blue focus:ring-offset-0 focus:ring-2
+      checked:bg-green-600 checked:border-green-600 checked:text-white
+      hover:border-primary-blue/70 hover:bg-primary-blue/5
+      transition-colors duration-200 ease-in-out
     `,
     enterprise: `
-      border-nexus-border text-primary-blue
-      focus:ring-primary-blue focus:ring-offset-0
-      checked:bg-primary-blue checked:border-primary-blue
-      hover:border-primary-blue/30
-      hover:bg-primary-blue/5
+      border-2 border-nexus-border text-primary-blue bg-white
+      focus:ring-primary-blue focus:ring-offset-0 focus:ring-2
+      checked:bg-primary-blue checked:border-primary-blue checked:text-white
+      hover:border-primary-blue/50 hover:bg-primary-blue/8
+      transition-colors duration-200 ease-in-out
     `
   };
 
   const sizeClasses = {
-    sm: 'h-3 w-3',
-    md: 'h-4 w-4',
-    lg: 'h-5 w-5'
+    sm: 'h-4 w-4',
+    md: 'h-5 w-5',
+    lg: 'h-6 w-6'
   };
 
   const labelSizeClasses = {

@@ -86,7 +86,7 @@ export default function InventorySummary() {
       case '受注': return 'bg-orange-500';
       case '出荷': return 'bg-indigo-500';
       case '配送': return 'bg-cyan-500';
-      case '売約済み': return 'bg-gray-500';
+      case '購入者決定': return 'bg-gray-500';
       case '返品': return 'bg-red-500';
       default: return 'bg-gray-400';
     }

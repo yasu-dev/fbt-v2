@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { AuthService } from '@/lib/auth';
+import { ActivityLogger } from '@/lib/activity-logger';
 
 const prisma = new PrismaClient();
 
@@ -125,20 +126,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Log activity
-    await prisma.activity.create({
-      data: {
-        type: 'movement',
-        description: `商品 ${product.name} が ${product.currentLocation?.code || '未設定'} から ${targetLocation.code} に移動されました`,
-        userId: user.id,
-        productId,
-        metadata: JSON.stringify({
-          fromLocation: product.currentLocation?.code,
-          toLocation: targetLocation.code,
-          notes,
-        }),
-      },
-    });
+    // 詳細な移動履歴を記録
+    const metadata = ActivityLogger.extractMetadataFromRequest(request);
+    await ActivityLogger.logInventoryMovement(
+      productId,
+      product.currentLocationId,
+      toLocationId,
+      user.id,
+      {
+        ...metadata,
+        fromLocationCode: product.currentLocation?.code || null,
+        toLocationCode: targetLocation.code,
+        moveReason: notes || '在庫移動',
+        movedBy: user.username,
+        movementId: movement.id,
+      }
+    );
 
     return NextResponse.json({ 
       success: true, 
@@ -217,21 +220,30 @@ export async function DELETE(request: NextRequest) {
       where: { id: movementId },
     });
 
-    // Log activity
-    await prisma.activity.create({
-      data: {
-        type: 'movement_delete',
-        description: `商品 ${movement.product.name} の移動記録が削除されました`,
-        userId: user.id,
-        productId: movement.productId,
-        metadata: JSON.stringify({
-          deletedMovement: {
-            from: movement.fromLocation?.code,
-            to: movement.toLocation?.code,
-          },
-        }),
+    // 移動記録削除の履歴を記録
+    const metadata = ActivityLogger.extractMetadataFromRequest(request);
+    await ActivityLogger.logDataChange(
+      'inventory',
+      'delete',
+      movementId,
+      user.id,
+      {
+        oldValue: {
+          productId: movement.productId,
+          productName: movement.product.name,
+          fromLocation: movement.fromLocation?.code,
+          toLocation: movement.toLocation?.code,
+          notes: movement.notes,
+        },
+        newValue: null,
       },
-    });
+      {
+        ...metadata,
+        action: 'movement_delete',
+        reason: '移動記録の削除',
+        deletedBy: user.username,
+      }
+    );
 
     return NextResponse.json({ success: true, message: '移動記録を削除しました' });
   } catch (error) {

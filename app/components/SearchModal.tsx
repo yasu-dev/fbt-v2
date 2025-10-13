@@ -34,16 +34,10 @@ export default function SearchModal({ isOpen, onClose, query }: SearchModalProps
             description: 'カメラ本体 - SKU: CAM-001',
             url: '/inventory',
           },
-          {
-            id: '2',
-            title: 'Canon EOS R5 検品作業',
-            type: 'task' as const,
-            description: '検品タスク - 担当: 田中',
-            url: '/staff/tasks',
-          },
+
           {
             id: '3',
-            title: '山田太郎',
+            title: '顧客',
             type: 'customer' as const,
             description: '顧客 - 注文: ORD-2024-001',
             url: '/dashboard',
@@ -101,7 +95,7 @@ export default function SearchModal({ isOpen, onClose, query }: SearchModalProps
       case 'customer':
         return '顧客';
       default:
-        return 'その他';
+        return 'カテゴリ未設定';
     }
   };
 

@@ -233,6 +233,28 @@ npm run test:a11y
 
 ---
 
-**最終更新**: 2024-12-24
-**バージョン**: 1.0.0
-**責任者**: Development Team 
+**最終更新**: 2025年10月3日
+**バージョン**: 2.0.0
+**責任者**: Development Team
+
+## 📝 重要な変更点（v2.0）
+
+### 実装状況の反映
+- 現在、本プロジェクトではNexusデザインシステムは**部分的に実装**されています
+- カスタムコンポーネントは `app/components/` に配置されています
+- Tailwind CSSを直接使用する箇所も多く存在します
+
+### 実際の実装パターン
+```tsx
+// 現在の主な実装パターン
+import { Button } from '@/app/components/ui/Button';
+
+// Tailwind CSS直接使用も許容されています
+<div className="bg-white rounded-lg shadow-md p-6">
+  <h2 className="text-xl font-bold mb-4">タイトル</h2>
+  <Button variant="primary">アクション</Button>
+</div>
+```
+
+### 移行中の状態
+このドキュメントは理想的なデザインガイドラインを示していますが、実際の実装は段階的に移行中です。新規機能開発時は可能な限りこのガイドラインに従うことを推奨します。 

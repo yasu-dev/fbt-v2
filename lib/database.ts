@@ -25,45 +25,8 @@ export async function checkDatabaseConnection(): Promise<boolean> {
 // Initialize database with default data
 export async function initializeDatabase() {
   try {
-    // Check if initial data exists
-    const userCount = await prisma.user.count();
-    
-    if (userCount === 0) {
-      // Create default users
-      await prisma.user.createMany({
-        data: [
-          {
-            email: 'admin@example.com',
-            username: 'admin',
-            role: 'admin',
-            password: '$2a$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu/1u', // password123
-          },
-          {
-            email: 'seller@example.com',
-            username: 'seller',
-            role: 'seller',
-            password: '$2a$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu/1u', // password123
-          },
-          {
-            email: 'staff@example.com',
-            username: 'staff',
-            role: 'staff',
-            password: '$2a$10$K7L1OJ45/4Y2nIvhRVpCe.FSmhDdWoXehVzJptJ/op0lSsvqNu/1u', // password123
-          },
-        ],
-      });
-
-      // Create initial locations
-      await prisma.location.createMany({
-        data: [
-          { code: 'A-01-01', zone: 'A', name: 'A区画棚1-1' },
-          { code: 'A-01-02', zone: 'A', name: 'A区画棚1-2' },
-          { code: 'B-01-01', zone: 'B', name: 'B区画棚1-1' },
-          { code: 'B-01-02', zone: 'B', name: 'B区画棚1-2' },
-          { code: 'C-01-01', zone: 'C', name: 'C区画棚1-1' },
-        ],
-      });
-    }
+    // データベースの初期化はseed.tsで行うため、この関数は削除
+    console.log('データベースの初期化はseed.tsで行います');
   } catch (error) {
     // Silently fail in production
     if (process.env.NODE_ENV !== 'production') {

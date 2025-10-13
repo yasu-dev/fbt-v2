@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { BaseModal, NexusButton, NexusInput, NexusSelect, NexusTextarea, NexusCard } from './ui';
+import { useState, useRef, useEffect } from 'react';
+import { BaseModal, NexusButton, NexusInput, NexusSelect, NexusTextarea, NexusCard, BusinessStatusIndicator } from './ui';
 import { useToast } from './features/notifications/ToastProvider';
 import { CheckIcon, XMarkIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
@@ -32,9 +32,17 @@ interface ProductDetailModalProps {
 }
 
 export default function ProductDetailModal({ isOpen, onClose, product }: ProductDetailModalProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState('details');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const { showToast } = useToast();
+
+  // スクロール位置のリセット
+  useEffect(() => {
+    if (isOpen && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
 
   const handleEditProduct = () => {
     setIsEditModalOpen(true);
@@ -109,49 +117,141 @@ export default function ProductDetailModal({ isOpen, onClose, product }: Product
 
   if (!isOpen || !product) return null;
 
-  const demoHistory = [
-    {
-      date: '2024-12-25 14:30',
-      action: '入庫',
-      user: '田中スタッフ',
-      details: '新規入庫 - 検品完了'
-    },
-    {
-      date: '2024-12-20 10:15',
-      action: '検品',
-      user: '佐藤スタッフ',
-      details: '品質検査合格'
-    },
-    {
-      date: '2024-12-18 16:45',
-      action: '受入',
-      user: 'システム',
-      details: '仕入先より受入'
+  // メタデータから実際の情報を取得
+  const getMetadata = () => {
+    try {
+      if (product.metadata) {
+        return typeof product.metadata === 'string'
+          ? JSON.parse(product.metadata)
+          : product.metadata;
+      }
+    } catch (error) {
+      console.warn('メタデータ解析エラー:', error);
     }
-  ];
-
-  const demoSpecs = {
-    'ブランド': product.name.split(' ')[0] || 'Unknown',
-    'モデル': product.name,
-    '重量': '1.2kg',
-    'サイズ': '150 x 100 x 80mm',
-    '製造年': '2023',
-    '保証期間': '1年間'
+    return {};
   };
+
+  const metadata = getMetadata();
+
+  // 実際の履歴データを取得（API呼び出しまたはメタデータから）
+  const getProductHistory = () => {
+    const history = [];
+
+    if (product.entryDate) {
+      history.push({
+        date: new Date(product.entryDate).toLocaleString('ja-JP'),
+        action: '入庫',
+        user: 'システム',
+        details: '商品受入完了'
+      });
+    }
+
+    if (product.inspectedAt && product.inspectedBy) {
+      history.push({
+        date: new Date(product.inspectedAt).toLocaleString('ja-JP'),
+        action: '検品',
+        user: product.inspectedBy,
+        details: product.inspectionNotes || '検品完了'
+      });
+    }
+
+    if (metadata.photographyDate) {
+      history.push({
+        date: new Date(metadata.photographyDate).toLocaleString('ja-JP'),
+        action: '撮影',
+        user: metadata.photographyBy || 'スタッフ',
+        details: '商品撮影完了'
+      });
+    }
+
+    if (product.updatedAt) {
+      history.push({
+        date: new Date(product.updatedAt).toLocaleString('ja-JP'),
+        action: '更新',
+        user: 'システム',
+        details: '商品情報更新'
+      });
+    }
+
+    return history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  };
+
+  // 実際の仕様データを取得
+  const getProductSpecs = () => {
+    const specs = {};
+
+    if (product.category) {
+      const categoryLabels = {
+        camera: 'カメラ',
+        watch: '腕時計',
+        other: 'その他'
+      };
+      specs['カテゴリー'] = categoryLabels[product.category] || product.category;
+    }
+
+    if (product.condition) {
+      const conditionLabels = {
+        new: '新品',
+        like_new: '新品同様',
+        excellent: '優良',
+        very_good: '美品',
+        good: '良好',
+        fair: '普通',
+        poor: '要修理'
+      };
+      specs['コンディション'] = conditionLabels[product.condition] || product.condition;
+    }
+
+    if (metadata.packaging?.weight) {
+      const weight = parseFloat(metadata.packaging.weight);
+      const unit = metadata.packaging.weightUnit || 'kg';
+      specs['重量'] = `${weight.toFixed(1)}${unit}`;
+    }
+
+    if (metadata.packaging?.dimensions) {
+      specs['サイズ'] = metadata.packaging.dimensions;
+    }
+
+    if (product.sku) {
+      specs['SKU'] = product.sku;
+    }
+
+    if (product.currentLocation) {
+      specs['保管場所'] = product.currentLocation.code || product.currentLocation;
+    }
+
+    return specs;
+  };
+
+  const productHistory = getProductHistory();
+  const productSpecs = getProductSpecs();
 
   return (
     <BaseModal
       isOpen={isOpen}
       onClose={onClose}
-      title={product.name}
+              title={product.name || '商品詳細'}
       size="xl"
       className="max-h-[90vh] overflow-hidden"
     >
       <div className="p-6">
         <div className="mb-4">
             <p className="text-sm text-nexus-text-secondary">
-              SKU: {product.sku}
+              SKU: {product.sku || '不明'}
             </p>
+            {(() => {
+              try {
+                const md = (product as any).metadata ? (typeof (product as any).metadata === 'string' ? JSON.parse((product as any).metadata) : (product as any).metadata) : {};
+                const serial = md?.serialNumber || md?.deliveryPlanInfo?.serialNumber;
+                return serial ? (
+                  <p className="text-sm text-nexus-text-secondary mt-1">
+                    シリアル番号: <span className="font-mono">{serial}</span>
+                  </p>
+                ) : null;
+              } catch {
+                return null;
+              }
+            })()}
         </div>
 
         {/* Tabs */}
@@ -176,7 +276,7 @@ export default function ProductDetailModal({ isOpen, onClose, product }: Product
         </div>
 
         {/* Content */}
-        <div className="overflow-y-auto max-h-[60vh]">
+        <div className="overflow-y-auto max-h-[60vh]" ref={scrollContainerRef}>
           {activeTab === 'details' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -185,20 +285,20 @@ export default function ProductDetailModal({ isOpen, onClose, product }: Product
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       商品名
                     </label>
-                    <p className="text-lg text-gray-900 dark:text-white">{product.name}</p>
+                    <p className="text-lg text-gray-900 dark:text-white">{product.name || '商品名不明'}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       カテゴリー
                     </label>
-                    <p className="text-gray-900 dark:text-white">{product.category}</p>
+                    <p className="text-gray-900 dark:text-white">{product.category || 'カテゴリ不明'}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       価格
                     </label>
                     <p className="text-2xl font-bold text-green-600">
-                      ¥{product.price.toLocaleString()}
+                      ¥{(product.price || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -207,25 +307,22 @@ export default function ProductDetailModal({ isOpen, onClose, product }: Product
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       在庫数
                     </label>
-                    <p className="text-lg text-gray-900 dark:text-white">{product.stock}点</p>
+                    <p className="text-lg text-gray-900 dark:text-white">{(product.stock || 0)}点</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       保管場所
                     </label>
-                    <p className="text-gray-900 dark:text-white">{product.location}</p>
+                    <p className="text-gray-900 dark:text-white">{product.location || 'ロケーション不明'}</p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       ステータス
                     </label>
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      product.status === '在庫あり' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {product.status}
-                    </span>
+                    <BusinessStatusIndicator
+                      status={product.status}
+                      size="sm"
+                    />
                   </div>
                 </div>
               </div>
@@ -261,7 +358,7 @@ export default function ProductDetailModal({ isOpen, onClose, product }: Product
                     </tr>
                   </thead>
                   <tbody className="holo-body">
-                    {Object.entries(demoSpecs).map(([key, value]) => (
+                    {Object.entries(productSpecs).map(([key, value]) => (
                       <tr key={key} className="holo-row">
                         <td className="py-3 px-4">
                           <span className="font-medium text-nexus-text-secondary">{key}</span>
@@ -293,13 +390,13 @@ export default function ProductDetailModal({ isOpen, onClose, product }: Product
                     </tr>
                   </thead>
                   <tbody className="holo-body">
-                    {demoHistory.map((item, index) => (
+                    {productHistory.length > 0 ? productHistory.map((item, index) => (
                       <tr key={index} className="holo-row">
                         <td className="py-3 px-4">
                           <span className="font-medium text-nexus-blue">{item.action}</span>
                         </td>
                         <td className="py-3 px-4">
-                          <span className="text-nexus-text-primary">{item.details}</span>
+                          <span className="text-nexus-text-primary">{item.details === '詳細なし' ? '' : item.details}</span>
                         </td>
                         <td className="py-3 px-4">
                           <span className="text-nexus-text-secondary">{item.user}</span>
@@ -308,7 +405,13 @@ export default function ProductDetailModal({ isOpen, onClose, product }: Product
                           <span className="text-sm text-nexus-text-secondary">{item.date}</span>
                         </td>
                       </tr>
-                    ))}
+                    )) : (
+                      <tr className="holo-row">
+                        <td colSpan={4} className="py-6 px-4 text-center text-nexus-text-secondary">
+                          履歴データがありません
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

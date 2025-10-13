@@ -60,17 +60,17 @@ export default function ContentCard({
             inset 0 0 0 1px rgba(255, 255, 255, 0.5);
         }
 
-        /* パディングサイズ */
+        /* パディングサイズ - 全サイズで32px統一 */
         .nexus-card-padding-small {
-          padding: 1.5rem;
+          padding: 2rem;
         }
 
         .nexus-card-padding-medium {
-          padding: 2rem 2.5rem;
+          padding: 2rem;
         }
 
         .nexus-card-padding-large {
-          padding: 2.5rem 3rem;
+          padding: 2rem;
         }
 
         /* 地域別カラーリング */
@@ -191,18 +191,18 @@ export default function ContentCard({
           font-family: 'Noto Sans JP', sans-serif;
         }
 
-        /* レスポンシブ対応 */
+        /* レスポンシブ対応 - モバイルでも32px統一 */
         @media (max-width: 768px) {
           .nexus-card-padding-small {
-            padding: 1rem;
+            padding: 2rem;
           }
 
           .nexus-card-padding-medium {
-            padding: 1.25rem 1.5rem;
+            padding: 2rem;
           }
 
           .nexus-card-padding-large {
-            padding: 1.5rem 2rem;
+            padding: 2rem;
           }
 
           .nexus-card-title {

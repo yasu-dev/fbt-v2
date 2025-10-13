@@ -116,7 +116,7 @@ function generateRandomNotification(role: string) {
         id: `notif-${Date.now()}`,
         type: 'task',
         title: '新規タスク',
-        message: '検品待ちの商品があります',
+        message: '入庫待ちの商品があります',
         timestamp: new Date().toISOString(),
         priority: 'high',
         metadata: {

@@ -5,7 +5,7 @@
 
 export const serviceConfig = {
   // 開発環境でモックサービスを使用するかどうか
-  useMockServices: process.env.USE_MOCK_SERVICES === 'true' || process.env.NODE_ENV === 'development',
+  useMockServices: true, // 開発環境では常にモックを使用
   
   // eBay設定
   ebay: {

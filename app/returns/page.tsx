@@ -1,8 +1,8 @@
-'use client';
+﻿'use client';
 
 import DashboardLayout from '../components/layouts/DashboardLayout';
-import PageHeader from '../components/ui/PageHeader';
-import { useState } from 'react';
+import UnifiedPageHeader from '../components/ui/UnifiedPageHeader';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '../components/features/notifications/ToastProvider';
 import {
@@ -17,11 +17,17 @@ import NexusTextarea from '@/app/components/ui/NexusTextarea';
 import BaseModal from '@/app/components/ui/BaseModal';
 import { NexusCard } from '@/app/components/ui';
 import ReturnDetailModal from '@/app/components/modals/ReturnDetailModal';
+import { BusinessStatusIndicator } from '@/app/components/ui/StatusIndicator';
+import Pagination from '@/app/components/ui/Pagination';
+import { useSystemSetting } from '@/lib/hooks/useMasterData';
 
 export default function ReturnsPage() {
   const router = useRouter();
   const { showToast } = useToast();
   const [isReturnFormModalOpen, setIsReturnFormModalOpen] = useState(false);
+  
+  // マスタデータの取得
+  const { setting: returnReasons } = useSystemSetting('return_reasons');
   const [isReturnDetailModalOpen, setIsReturnDetailModalOpen] = useState(false);
   const [selectedReturnItem, setSelectedReturnItem] = useState<any>(null);
   const [returnForm, setReturnForm] = useState({
@@ -32,7 +38,11 @@ export default function ReturnsPage() {
     photos: [] as File[]
   });
 
-  const [returns] = useState([
+  const [returns, setReturns] = useState([]); 
+  const [loading, setLoading] = useState(true);
+  
+  // 実際のAPIからデータを取得（一時的にダミーデータも残す）
+  const [oldReturns] = useState([
     { 
       id: 1, 
       orderId: 'ORD-000123', 
@@ -40,7 +50,7 @@ export default function ReturnsPage() {
       reason: '商品不良', 
       status: 'pending', 
       date: '2024-01-15',
-      customerName: '山田太郎',
+      customerName: '顧客',
       amount: '¥450,000',
       description: '商品到着時に外装に傷があり、動作にも不具合が見られます。'
     },
@@ -51,7 +61,7 @@ export default function ReturnsPage() {
       reason: 'イメージ違い', 
       status: 'approved', 
       date: '2024-01-14',
-      customerName: '佐藤花子',
+      customerName: '顧客',
       amount: '¥280,000',
       description: '商品説明と実際の商品が異なっていました。'
     },
@@ -62,11 +72,51 @@ export default function ReturnsPage() {
       reason: '破損', 
       status: 'processing', 
       date: '2024-01-13',
-      customerName: '田中一郎',
+      customerName: '顧客',
       amount: '¥1,200,000',
       description: '配送中に破損したと思われます。'
     },
   ]);
+
+  // APIからデータ取得
+  useEffect(() => {
+    const fetchReturns = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/returns');
+        const data = await response.json();
+        
+        if (data.returns && data.returns.length > 0) {
+          // APIデータを画面に適合する形に変換
+          const formattedReturns = data.returns.map((item: any) => ({
+            id: item.id,
+            orderId: item.orderId,
+            product: `商品ID: ${item.productId}`,
+            reason: item.reason,
+            status: item.status,
+            date: new Date(item.createdAt).toISOString().split('T')[0],
+            customerName: '顧客',
+            amount: `¥${item.refundAmount?.toLocaleString()}`,
+            description: item.customerNote || '詳細情報なし'
+          }));
+          
+          setReturns(formattedReturns);
+          console.log('✅ 返品データ取得完了:', formattedReturns.length, '件');
+        } else {
+          console.log('📋 返品データなし - ダミーデータを使用');
+          setReturns(oldReturns);
+        }
+      } catch (error) {
+        console.error('❌ 返品データ取得エラー:', error);
+        // エラー時はダミーデータを使用
+        setReturns(oldReturns);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchReturns();
+  }, [oldReturns]);
 
   const [returnStats] = useState({
     totalReturns: 15,
@@ -74,6 +124,20 @@ export default function ReturnsPage() {
     completed: 10,
     returnRate: 3.2,
   });
+
+  // ページネーション状態
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+
+  // ページネーション計算
+  const paginatedReturns = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return returns.slice(startIndex, endIndex);
+  }, [returns, currentPage, itemsPerPage]);
+
+  const totalItems = returns.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   // 返品申請ボタンの機能実装
   const handleReturnRequest = () => {
@@ -220,37 +284,34 @@ export default function ReturnsPage() {
     setReturnForm(prev => ({ ...prev, photos: [...prev.photos, ...files] }));
   };
 
+  const headerActions = (
+    <>
+      <NexusButton 
+        onClick={handleReturnRequest}
+        variant="primary"
+        icon={<PlusIcon className="w-5 h-5" />}
+      >
+        返品申請
+      </NexusButton>
+      <NexusButton 
+        onClick={handleExportReport}
+        icon={<DocumentChartBarIcon className="w-5 h-5" />}
+      >
+        レポート出力
+      </NexusButton>
+    </>
+  );
+
   return (
     <DashboardLayout userType="seller">
       <div className="space-y-8">
-        {/* PageHeaderコンポーネントを使用してUI統一 */}
-        <PageHeader
+        {/* 統一ヘッダー */}
+        <UnifiedPageHeader
           title="返品管理"
           subtitle="返品リクエストの処理と履歴を管理します"
-          icon={
-            <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
-            </svg>
-          }
-          actions={
-            <div className="flex gap-4">
-              <NexusButton 
-                onClick={handleReturnRequest}
-                variant="primary"
-                icon={<PlusIcon className="w-5 h-5" />}
-              >
-                返品申請
-              </NexusButton>
-              <NexusButton 
-                onClick={handleExportReport}
-                icon={<DocumentChartBarIcon className="w-5 h-5" />}
-              >
-                レポート出力
-              </NexusButton>
-            </div>
-          }
-          region="africa"
-          size="large"
+          userType="seller"
+          iconType="returns"
+          actions={headerActions}
         />
 
         {/* 返品申請モーダル */}
@@ -286,7 +347,7 @@ export default function ReturnsPage() {
             <div>
               <label className="block text-sm font-medium text-nexus-text-secondary mb-3">返品理由 *</label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {['商品不良', 'イメージ違い', '破損', 'サイズ違い', '遅延配送', '重複注文', '間違い注文', 'その他'].map((reason) => (
+                {(returnReasons?.parsedValue ? returnReasons.parsedValue.map((r: any) => r.nameJa) : ['商品不良', 'イメージ違い', '破損', 'サイズ違い', '遅延配送', '重複注文', '間違い注文', 'その他']).map((reason: string) => (
                   <label key={reason} className="flex items-center cursor-pointer">
                     <input 
                       type="radio" 
@@ -314,7 +375,7 @@ export default function ReturnsPage() {
 
             <div>
               <label className="block text-sm font-medium text-nexus-text-secondary mb-2">写真アップロード</label>
-              <div className="border-3 border-dashed border-nexus-border rounded-xl p-8 text-center hover:border-primary-blue transition-all duration-300 hover:bg-primary-blue/5">
+              <div className="border-3 border-dashed border-nexus-border rounded-xl p-5 text-center hover:border-primary-blue transition-all duration-300 hover:bg-primary-blue/5">
                 <input
                   type="file"
                   multiple
@@ -356,95 +417,11 @@ export default function ReturnsPage() {
           </div>
         </BaseModal>
 
-        {/* Return Statistics - Intelligence Metrics Style */}
-        <div className="intelligence-metrics">
-          <div className="unified-grid-4">
-            <div className="intelligence-card africa">
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="action-orb red">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
-                    </svg>
-                  </div>
-                  <span className="status-badge error">{returnStats.totalReturns}</span>
-                </div>
-                <div className="metric-value font-display text-3xl font-bold text-nexus-text-primary">
-                  {returnStats.totalReturns}
-                  <span className="text-lg font-normal text-nexus-text-secondary ml-1">件</span>
-                </div>
-                <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                  総返品数
-                </div>
-              </div>
-            </div>
 
-            <div className="intelligence-card africa">
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="action-orb">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <span className="status-badge warning">処理中</span>
-                </div>
-                <div className="metric-value font-display text-3xl font-bold text-nexus-text-primary">
-                  {returnStats.pending}
-                  <span className="text-lg font-normal text-nexus-text-secondary ml-1">件</span>
-                </div>
-                <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                  処理待ち
-                </div>
-              </div>
-            </div>
-
-            <div className="intelligence-card africa">
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="action-orb green">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <span className="status-badge success">完了</span>
-                </div>
-                <div className="metric-value font-display text-3xl font-bold text-nexus-text-primary">
-                  {returnStats.completed}
-                  <span className="text-lg font-normal text-nexus-text-secondary ml-1">件</span>
-                </div>
-                <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                  完了済み
-                </div>
-              </div>
-            </div>
-
-            <div className="intelligence-card africa">
-              <div className="p-8">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="action-orb blue">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <span className="text-xs font-bold text-nexus-blue">割合</span>
-                </div>
-                <div className="metric-value font-display text-3xl font-bold text-nexus-text-primary">
-                  {returnStats.returnRate}
-                  <span className="text-lg font-normal text-nexus-text-secondary ml-1">%</span>
-                </div>
-                <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                  返品率
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* Return Request Form - Intelligence Card Style */}
-        <div className="intelligence-card africa">
-          <div className="p-8">
-            <h3 className="text-2xl font-display font-bold text-nexus-text-primary mb-6">返品履歴</h3>
+        <div className="intelligence-card oceania">
+          <div className="p-6">
             
             <div className="holo-table">
               <table className="w-full">
@@ -452,37 +429,33 @@ export default function ReturnsPage() {
                   <tr>
                     <th className="text-left">返品ID</th>
                     <th className="text-left">注文番号</th>
-                    <th className="text-left">商品名</th>
+                    <th className="text-left">商品</th>
                     <th className="text-left">返品理由</th>
                     <th className="text-center">ステータス</th>
                     <th className="text-left">申請日</th>
-                    <th className="text-center">アクション</th>
+                    <th className="text-center">操作</th>
                   </tr>
                 </thead>
                 <tbody className="holo-body">
-                  {returns.map((returnItem) => (
+                  {paginatedReturns.map((returnItem) => (
                     <tr key={returnItem.id} className="holo-row">
                       <td className="font-mono text-nexus-text-primary">RET-{String(returnItem.id).padStart(6, '0')}</td>
                       <td className="font-mono">{returnItem.orderId}</td>
                       <td className="font-medium text-nexus-text-primary">{returnItem.product}</td>
                       <td>{returnItem.reason}</td>
                       <td className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className={`status-orb status-${
-                            returnItem.status === '申請' ? 'monitoring' :
-                            returnItem.status === '受領' ? 'optimal' :
-                            returnItem.status === '再検品' ? 'monitoring' :
-                            'optimal'
-                          }`} />
-                          <span className={`status-badge ${
-                            returnItem.status === '申請' ? 'warning' :
-                            returnItem.status === '受領' ? 'info' :
-                            returnItem.status === '再検品' ? 'warning' :
-                            'success'
-                          }`}>
-                            {returnItem.status}
-                          </span>
-                        </div>
+                        <BusinessStatusIndicator 
+                          status={
+                            returnItem.status === '申請' ? 'pending' :
+                            returnItem.status === '受領' ? 'processing' :
+                            returnItem.status === '再検品' ? 'processing' :
+                            returnItem.status === 'approved' ? 'approved' :
+                            returnItem.status === 'processing' ? 'processing' :
+                            'completed'
+                          } 
+                          size="sm" 
+                          showLabel={true}
+                        />
                       </td>
                       <td className="font-mono text-sm">{returnItem.date}</td>
                       <td className="text-center">
@@ -524,97 +497,114 @@ export default function ReturnsPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* ページネーション */}
+            {totalItems > 0 && (
+              <div className="mt-6 pt-4 border-t border-nexus-border">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                  totalItems={totalItems}
+                  itemsPerPage={itemsPerPage}
+                  onItemsPerPageChange={setItemsPerPage}
+                />
+              </div>
+            )}
           </div>
         </div>
 
         {/* Return Process Flow - Intelligence Card Style */}
-        <div className="intelligence-card africa">
-          <div className="p-8">
-            <h3 className="text-2xl font-display font-bold text-nexus-text-primary mb-8">返品業務フロー</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-              <div className="intelligence-card asia">
-                <div className="p-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="action-orb">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
+        
+        {!isReturnFormModalOpen && !isReturnDetailModalOpen && (
+          <div className="intelligence-card africa">
+            <div className="p-5">
+              <h3 className="text-2xl font-display font-bold text-nexus-text-primary mb-8">返品業務フロー</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                <div className="intelligence-card asia">
+                  <div className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="action-orb">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <span className="status-badge warning">申請</span>
                     </div>
-                    <span className="status-badge warning">申請</span>
+                    <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
+                      1
+                    </div>
+                    <div className="metric-label text-nexus-text-secondary font-medium mt-2">
+                      申請
+                    </div>
+                    <p className="text-sm text-nexus-text-secondary mt-2">返品リクエスト提出</p>
                   </div>
-                  <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
-                    1
-                  </div>
-                  <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                    申請
-                  </div>
-                  <p className="text-sm text-nexus-text-secondary mt-2">返品リクエスト提出</p>
                 </div>
-              </div>
 
-              <div className="intelligence-card americas">
-                <div className="p-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="action-orb blue">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
-                      </svg>
+                <div className="intelligence-card americas">
+                  <div className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="action-orb blue">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
+                        </svg>
+                      </div>
+                      <span className="status-badge info">受領</span>
                     </div>
-                    <span className="status-badge info">受領</span>
+                    <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
+                      2
+                    </div>
+                    <div className="metric-label text-nexus-text-secondary font-medium mt-2">
+                      受領
+                    </div>
+                    <p className="text-sm text-nexus-text-secondary mt-2">商品の受け取り確認</p>
                   </div>
-                  <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
-                    2
-                  </div>
-                  <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                    受領
-                  </div>
-                  <p className="text-sm text-nexus-text-secondary mt-2">商品の受け取り確認</p>
                 </div>
-              </div>
 
-              <div className="intelligence-card europe">
-                <div className="p-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="action-orb">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
+                <div className="intelligence-card europe">
+                  <div className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="action-orb">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </div>
+                      <span className="status-badge">保管作業中</span>
                     </div>
-                    <span className="status-badge">検品中</span>
+                    <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
+                      3
+                    </div>
+                    <div className="metric-label text-nexus-text-secondary font-medium mt-2">
+                      再検品
+                    </div>
+                    <p className="text-sm text-nexus-text-secondary mt-2">状態確認・評価</p>
                   </div>
-                  <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
-                    3
-                  </div>
-                  <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                    再検品
-                  </div>
-                  <p className="text-sm text-nexus-text-secondary mt-2">状態確認・評価</p>
                 </div>
-              </div>
 
-              <div className="intelligence-card africa">
-                <div className="p-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="action-orb green">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+                <div className="intelligence-card africa">
+                  <div className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="action-orb green">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <span className="status-badge success">完了</span>
                     </div>
-                    <span className="status-badge success">完了</span>
+                    <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
+                      4
+                    </div>
+                    <div className="metric-label text-nexus-text-secondary font-medium mt-2">
+                      完了
+                    </div>
+                    <p className="text-sm text-nexus-text-secondary mt-2">返金・交換処理</p>
                   </div>
-                  <div className="metric-value font-display text-2xl font-bold text-nexus-text-primary">
-                    4
-                  </div>
-                  <div className="metric-label text-nexus-text-secondary font-medium mt-2">
-                    完了
-                  </div>
-                  <p className="text-sm text-nexus-text-secondary mt-2">返金・交換処理</p>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Return Detail Modal */}
         <ReturnDetailModal

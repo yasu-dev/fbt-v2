@@ -1,7 +1,7 @@
 'use client';
 
 import DashboardLayout from '@/app/components/layouts/DashboardLayout';
-import PageHeader from '@/app/components/ui/PageHeader';
+import UnifiedPageHeader from '@/app/components/ui/UnifiedPageHeader';
 import TaskCreationModal from '@/app/components/modals/TaskCreationModal';
 import TaskDetailModal from '@/app/components/TaskDetailModal';
 import { useState, useEffect, useRef } from 'react';
@@ -12,7 +12,7 @@ import {
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/components/features/notifications/ToastProvider';
-import HoloTable from '@/app/components/ui/HoloTable';
+
 import NexusButton from '@/app/components/ui/NexusButton';
 import NexusSelect from '@/app/components/ui/NexusSelect';
 import NexusInput from '@/app/components/ui/NexusInput';
@@ -23,7 +23,7 @@ interface StaffTask {
   id: string;
   title: string;
   description: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: string;
   status: 'pending' | 'in_progress' | 'completed';
   assignee: string;
   dueDate: string;
@@ -46,13 +46,13 @@ interface Task {
   assignee: string;
   dueDate: string;
   status: string;
-  priority: string;
+
   description?: string;
 }
 
 interface StaffData {
   staffTasks: {
-    urgentTasks: StaffTask[];
+  
     normalTasks: StaffTask[];
   };
   staffStats: {
@@ -81,7 +81,7 @@ export default function StaffDashboardPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterPriority, setFilterPriority] = useState<string>('all');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +108,11 @@ export default function StaffDashboardPage() {
 
         const data = await response.json();
         setStaffData(data);
-        setTasks(data.staffTasks?.urgentTasks || []);
+        
+        // 新しいAPIレスポンス構造に対応
+        // data.picking.tasks を使用してタスクデータを設定
+        const tasksFromAPI = data.picking?.tasks || [];
+        setTasks(tasksFromAPI);
       } catch (err) {
         console.error('Staff dashboard data fetch error:', err);
         setError(err instanceof Error ? err.message : 'データの取得に失敗しました');
@@ -116,12 +120,12 @@ export default function StaffDashboardPage() {
         // フォールバック用のモックデータ
         const mockStaffData = {
           staffTasks: {
-            urgentTasks: [
+            normalTasks: [
               {
                 id: 'task-001',
                 title: 'Canon EOS R5 検品',
                 description: '高優先度の検品タスク',
-                priority: 'high',
+        
                 status: 'pending',
                 assignee: 'スタッフ',
                 dueDate: '2024-06-27',
@@ -144,7 +148,7 @@ export default function StaffDashboardPage() {
           }
         };
         setStaffData(mockStaffData);
-        setTasks(mockStaffData.staffTasks.urgentTasks);
+        setTasks(mockStaffData.staffTasks.normalTasks);
       } finally {
         setIsLoading(false);
       }
@@ -154,22 +158,30 @@ export default function StaffDashboardPage() {
   }, [mounted]);
 
   const getAllTasks = (): StaffTask[] => {
-    if (!staffData) return [];
-    return [...staffData.staffTasks.urgentTasks, ...staffData.staffTasks.normalTasks];
+    if (!staffData || !staffData.picking?.tasks) return [];
+    // 新しいAPIレスポンスからタスクデータを取得
+    return staffData.picking.tasks.map((task: any) => ({
+      id: task.id,
+      title: `注文 ${task.orderId} - ${task.customer}`,
+      description: `${task.totalItems}個のアイテム（${task.pickedItems}個完了）`,
+      status: task.status === 'pending' ? 'pending' : 'in_progress',
+      assignee: 'スタッフ',
+      dueDate: task.dueDate ? new Date(task.dueDate).toLocaleDateString('ja-JP') : '未設定',
+      type: 'picking',
+      location: 'ピッキングエリア',
+      estimatedDuration: '1時間',
+      category: 'ピッキング',
+      value: '¥0',
+      priority: task.priority || 'normal',
+      progress: task.progress || 0
+    }));
   };
 
   const getFilteredTasks = (): StaffTask[] => {
     const allTasks = getAllTasks();
     let filtered = allTasks;
 
-    // Apply priority/urgency filter
-    if (filterPriority === 'urgent') {
-      filtered = staffData?.staffTasks.urgentTasks || [];
-    } else if (filterPriority === 'normal') {
-      filtered = staffData?.staffTasks.normalTasks || [];
-    } else if (filterPriority !== 'all') {
-      filtered = allTasks.filter(task => task.priority === filterPriority);
-    }
+    // フィルター処理を先入れ先出しに変更
 
     // Apply type filter
     if (filterStatus !== 'all') {
@@ -188,11 +200,7 @@ export default function StaffDashboardPage() {
     return filtered;
   };
 
-  const priorityLabels: Record<string, string> = {
-    high: '高',
-    medium: '中',
-    low: '低'
-  };
+
 
   // ステータス表示は BusinessStatusIndicator で統一
 
@@ -232,11 +240,7 @@ export default function StaffDashboardPage() {
     
     const newStaffData = { ...staffData };
     
-    // Update in urgent tasks
-    const urgentIndex = newStaffData.staffTasks.urgentTasks.findIndex(t => t.id === taskId);
-    if (urgentIndex !== -1) {
-      newStaffData.staffTasks.urgentTasks[urgentIndex].status = newStatus;
-    }
+    // 先入れ先出しでタスク更新
     
     // Update in normal tasks
     const normalIndex = newStaffData.staffTasks.normalTasks.findIndex(t => t.id === taskId);
@@ -253,14 +257,14 @@ export default function StaffDashboardPage() {
     pending: allTasks.filter(t => t.status === 'pending').length,
     inProgress: allTasks.filter(t => t.status === 'in_progress').length,
     completed: allTasks.filter(t => t.status === 'completed').length,
-    urgent: staffData?.staffTasks.urgentTasks.filter(t => t.status !== 'completed').length || 0,
+    // 新しいAPIレスポンスから追加統計データを取得
+    totalProducts: staffData?.overview?.totalProducts || 0,
+    inspectionProducts: staffData?.overview?.inspectionProducts || 0,
+    urgentTasks: staffData?.tasks?.urgent || 0,
+    efficiency: staffData?.tasks?.efficiency || 0
   };
 
-  const taskPrioritySettings = {
-    high: '緊急',
-    medium: '中',
-    low: '低',
-  };
+
 
   const taskCategorySettings = {
     inspection: '',
@@ -289,7 +293,7 @@ export default function StaffDashboardPage() {
       assignee: task.assignee,
       dueDate: task.dueDate,
       status: task.status,
-      priority: task.priority,
+
       description: task.description
     };
     setSelectedTask(taskData);
@@ -302,15 +306,10 @@ export default function StaffDashboardPage() {
     
     const newStaffData = { ...staffData };
     
-    // タスクの更新処理
-    const urgentIndex = newStaffData.staffTasks.urgentTasks.findIndex(t => t.id === selectedTask.id);
-    if (urgentIndex !== -1) {
-      newStaffData.staffTasks.urgentTasks[urgentIndex] = { ...selectedTask, ...updatedTask };
-    } else {
-      const normalIndex = newStaffData.staffTasks.normalTasks.findIndex(t => t.id === selectedTask.id);
-      if (normalIndex !== -1) {
-        newStaffData.staffTasks.normalTasks[normalIndex] = { ...selectedTask, ...updatedTask };
-      }
+    // 先入れ先出しでタスク更新
+    const normalIndex = newStaffData.staffTasks.normalTasks.findIndex(t => t.id === selectedTask.id);
+    if (normalIndex !== -1) {
+      newStaffData.staffTasks.normalTasks[normalIndex] = { ...selectedTask, ...updatedTask };
     }
     
     setStaffData(newStaffData);
@@ -335,7 +334,7 @@ export default function StaffDashboardPage() {
           id: taskData.id,
           title: taskData.title,
           description: taskData.description,
-          priority: taskData.priority,
+    
           status: 'pending',
           assignee: taskData.assignedToName || '未割り当て',
           dueDate: taskData.dueDate || new Date().toISOString().split('T')[0],
@@ -367,6 +366,7 @@ export default function StaffDashboardPage() {
 
   const handleTaskDetail = (task: StaffTask) => {
     // StaffTaskをTaskDetailModalで使用するTask形式に変換
+    // 添付ファイルとコメントは表示しない仕様
     const taskDetailData = {
       id: task.id,
       title: task.title,
@@ -374,10 +374,9 @@ export default function StaffDashboardPage() {
       assignee: task.assignee,
       dueDate: task.dueDate,
       status: task.status,
-      priority: task.priority,
-      description: task.description,
-      attachments: [],
-      comments: []
+      priority: task.priority || 'medium',
+      description: task.description
+      // attachments, commentsは意図的に除外
     };
     setSelectedTask(taskDetailData);
     setIsDetailModalOpen(true);
@@ -387,16 +386,12 @@ export default function StaffDashboardPage() {
     return (
       <DashboardLayout userType="staff">
         <div className="space-y-6">
-          <div className="intelligence-card global">
-            <div className="p-8">
-              <h1 className="text-3xl font-display font-bold text-nexus-text-primary">
-                業務レポート
-              </h1>
-              <p className="mt-1 text-sm text-nexus-text-secondary">
-                業務遂行状況の統合管理
-              </p>
-            </div>
-          </div>
+          <UnifiedPageHeader
+            title="ダッシュボード"
+            subtitle="業務遂行状況の統合管理"
+            userType="staff"
+            iconType="dashboard"
+          />
           <div className="flex items-center justify-center min-h-[400px]">
             <NexusLoadingSpinner size="lg" />
           </div>
@@ -409,16 +404,11 @@ export default function StaffDashboardPage() {
     return (
       <DashboardLayout userType="staff">
         <div className="space-y-6">
-          <div className="intelligence-card global">
-            <div className="p-8">
-              <h1 className="text-3xl font-display font-bold text-nexus-text-primary">
-                業務レポート
-              </h1>
-              <p className="mt-1 text-sm text-nexus-text-secondary">
-                業務遂行状況の統合管理
-              </p>
-            </div>
-          </div>
+          <UnifiedPageHeader
+            title="ダッシュボード"
+            subtitle="業務遂行状況の統合管理"
+            userType="staff"
+          />
           <div className="flex items-center justify-center min-h-[400px]">
             <NexusLoadingSpinner size="lg" />
           </div>
@@ -431,16 +421,12 @@ export default function StaffDashboardPage() {
     return (
       <DashboardLayout userType="staff">
         <div className="space-y-6">
-          <div className="intelligence-card global">
-            <div className="p-8">
-              <h1 className="text-3xl font-display font-bold text-nexus-text-primary">
-                業務レポート
-              </h1>
-              <p className="mt-1 text-sm text-nexus-text-secondary">
-                業務遂行状況の統合管理
-              </p>
-            </div>
-          </div>
+          <UnifiedPageHeader
+            title="ダッシュボード"
+            subtitle="業務遂行状況の統合管理"
+            userType="staff"
+            iconType="dashboard"
+          />
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center">
               <ExclamationCircleIcon className="w-16 h-16 text-nexus-red mx-auto mb-4" />
@@ -475,17 +461,14 @@ export default function StaffDashboardPage() {
   return (
     <DashboardLayout userType="staff">
       <div className="space-y-6">
-        {/* ヘッダー */}
-        <div className="intelligence-card global">
-          <div className="p-8">
-            <h1 className="text-3xl font-display font-bold text-nexus-text-primary">
-              業務レポート
-            </h1>
-            <p className="mt-2 text-nexus-text-secondary">
-              業務遂行状況の統合管理
-            </p>
-          </div>
-        </div>
+        {/* 統一ヘッダー */}
+        <UnifiedPageHeader
+          title="ダッシュボード"
+          subtitle="業務遂行状況の統合管理"
+          userType="staff"
+          iconType="dashboard"
+          actions={headerActions}
+        />
 
         {/* Task Creation Modal */}
         <TaskCreationModal
@@ -519,18 +502,18 @@ export default function StaffDashboardPage() {
             <div className="intelligence-card americas">
               <div className="p-8">
                 <div className="flex items-center justify-between mb-2 sm:mb-4">
-                  <div className="action-orb red w-6 h-6 sm:w-8 sm:h-8">
+                  <div className="action-orb green w-6 h-6 sm:w-8 sm:h-8">
                     <svg className="w-4 h-4 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
-                  <span className="status-badge danger text-[10px] sm:text-xs">緊急</span>
+                  <span className="status-badge success text-[10px] sm:text-xs">完了</span>
                 </div>
                 <div className="metric-value font-display text-xl sm:text-2xl md:text-3xl font-bold text-nexus-text-primary">
-                  {stats.urgent}
+                  {stats.completed}
                 </div>
                 <div className="metric-label text-nexus-text-secondary font-medium mt-1 sm:mt-2 text-xs sm:text-sm">
-                  緊急タスク
+                  完了済み
                 </div>
               </div>
             </div>
@@ -578,16 +561,16 @@ export default function StaffDashboardPage() {
                 <div className="flex items-center justify-between mb-2 sm:mb-4">
                   <div className="action-orb green w-6 h-6 sm:w-8 sm:h-8">
                     <svg className="w-4 h-4 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                     </svg>
                   </div>
-                  <span className="status-badge success text-[10px] sm:text-xs">完了</span>
+                  <span className="status-badge info text-[10px] sm:text-xs">商品</span>
                 </div>
                 <div className="metric-value font-display text-xl sm:text-2xl md:text-3xl font-bold text-nexus-text-primary">
-                  {stats.completed}
+                  {stats.totalProducts}
                 </div>
                 <div className="metric-label text-nexus-text-secondary font-medium mt-1 sm:mt-2 text-xs sm:text-sm">
-                  完了済み
+                  総商品数
                 </div>
               </div>
             </div>
@@ -603,10 +586,10 @@ export default function StaffDashboardPage() {
                   <span className="status-badge success text-[10px] sm:text-xs">本日</span>
                 </div>
                 <div className="metric-value font-display text-xl sm:text-2xl md:text-3xl font-bold text-nexus-text-primary">
-                  {staffData.staffStats.daily.tasksCompleted}
+                  {stats.efficiency}%
                 </div>
                 <div className="metric-label text-nexus-text-secondary font-medium mt-1 sm:mt-2 text-xs sm:text-sm">
-                  本日完了
+                  効率スコア
                 </div>
               </div>
             </div>
@@ -626,13 +609,13 @@ export default function StaffDashboardPage() {
                   <h3 className="text-lg font-medium text-nexus-text-primary mb-4">本日の作業フロー</h3>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-nexus-text-secondary">検品待ち</span>
+                      <span className="text-sm text-nexus-text-secondary">入庫待ち</span>
                       <div className="flex items-center">
-                        <span className="text-sm font-medium text-nexus-text-primary mr-2">{staffData.staffStats.daily.inspectionsCompleted || 0} / {(staffData.staffStats.daily.inspectionsCompleted || 0) + 5}</span>
+                        <span className="text-sm font-medium text-nexus-text-primary mr-2">{staffData.overview?.inspectionProducts || 0} / {(staffData.overview?.totalProducts || 0)}</span>
                         <div className="w-24 bg-nexus-bg-tertiary rounded-full h-2">
                           <div 
                             className="bg-nexus-blue h-2 rounded-full transition-all duration-300" 
-                            style={{ width: `${((staffData.staffStats.daily.inspectionsCompleted || 0) / ((staffData.staffStats.daily.inspectionsCompleted || 0) + 5)) * 100}%` }}
+                            style={{ width: `${staffData.overview?.totalProducts > 0 ? ((staffData.overview?.inspectionProducts || 0) / staffData.overview.totalProducts) * 100 : 0}%` }}
                           ></div>
                         </div>
                       </div>
@@ -649,11 +632,11 @@ export default function StaffDashboardPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-nexus-text-secondary">出荷準備</span>
                       <div className="flex items-center">
-                        <span className="text-sm font-medium text-nexus-text-primary mr-2">{staffData.staffStats.daily.shipmentsProcessed || 0} / {(staffData.staffStats.daily.shipmentsProcessed || 0) + 3}</span>
+                        <span className="text-sm font-medium text-nexus-text-primary mr-2">{staffData.shipping?.todayOrders || 0} / {(staffData.shipping?.todayOrders || 0) + (staffData.shipping?.pendingShipments || 0)}</span>
                         <div className="w-24 bg-nexus-bg-tertiary rounded-full h-2">
                           <div 
                             className="bg-nexus-purple h-2 rounded-full transition-all duration-300" 
-                            style={{ width: `${((staffData.staffStats.daily.shipmentsProcessed || 0) / ((staffData.staffStats.daily.shipmentsProcessed || 0) + 3)) * 100}%` }}
+                            style={{ width: `${staffData.shipping?.efficiency || 0}%` }}
                           ></div>
                         </div>
                       </div>
@@ -666,7 +649,7 @@ export default function StaffDashboardPage() {
                   <h3 className="text-lg font-medium text-nexus-text-primary mb-4">リアルタイム指標</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <div className="text-2xl font-bold text-nexus-text-primary">{staffData.staffStats.weekly.efficiency || 0}%</div>
+                      <div className="text-2xl font-bold text-nexus-text-primary">{staffData.tasks?.efficiency || 0}%</div>
                       <div className="text-xs text-nexus-text-secondary">作業効率</div>
                       <div className="flex items-center mt-1">
                         <span className="text-xs text-nexus-green">+5%</span>
@@ -676,7 +659,7 @@ export default function StaffDashboardPage() {
                       </div>
                     </div>
                     <div>
-                      <div className="text-2xl font-bold text-nexus-text-primary">{staffData.staffStats.daily.totalRevenue || '¥0'}</div>
+                      <div className="text-2xl font-bold text-nexus-text-primary">¥{(staffData.overview?.soldProducts * 50000 || 0).toLocaleString()}</div>
                       <div className="text-xs text-nexus-text-secondary">処理金額</div>
                       <div className="flex items-center mt-1">
                         <span className="text-xs text-nexus-text-secondary">目標: ¥5,000,000</span>
@@ -690,24 +673,15 @@ export default function StaffDashboardPage() {
                     </div>
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-sm text-nexus-text-secondary">品質スコア</span>
-                      <span className="text-sm font-medium text-nexus-text-primary">{staffData.staffStats.weekly.qualityScore || 95}%</span>
+                      <span className="text-sm font-medium text-nexus-text-primary">{staffData.overview?.completionRate || 95}%</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 優先作業アラート */}
+                {/* 作業状況サマリー */}
                 <div className="bg-nexus-bg-secondary rounded-lg p-6">
-                  <h3 className="text-lg font-medium text-nexus-text-primary mb-4">優先作業アラート</h3>
+                  <h3 className="text-lg font-medium text-nexus-text-primary mb-4">作業状況サマリー</h3>
                   <div className="space-y-3">
-                    {stats.urgent > 0 && (
-                      <div className="flex items-start space-x-3 p-3 bg-nexus-red/10 rounded-lg">
-                        <ExclamationCircleIcon className="w-5 h-5 text-nexus-red flex-shrink-0 mt-0.5" />
-                        <div>
-                          <div className="text-sm font-medium text-nexus-text-primary">緊急タスク {stats.urgent}件</div>
-                          <div className="text-xs text-nexus-text-secondary mt-1">至急対応が必要です</div>
-                        </div>
-                      </div>
-                    )}
                     <div className="flex items-start space-x-3 p-3 bg-nexus-yellow/10 rounded-lg">
                       <svg className="w-5 h-5 text-nexus-yellow flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -734,7 +708,7 @@ export default function StaffDashboardPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
-                  <div className="text-2xl font-bold text-nexus-text-primary">{staffData.staffStats.daily.inspectionsCompleted}</div>
+                  <div className="text-2xl font-bold text-nexus-text-primary">{staffData.overview?.inspectionProducts || 0}</div>
                   <div className="text-xs text-nexus-text-secondary">検品完了</div>
                 </div>
                 <div className="bg-nexus-bg-secondary rounded-lg p-4 text-center">
@@ -753,7 +727,7 @@ export default function StaffDashboardPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0" />
                     </svg>
                   </div>
-                  <div className="text-2xl font-bold text-nexus-text-primary">{staffData.staffStats.daily.shipmentsProcessed}</div>
+                  <div className="text-2xl font-bold text-nexus-text-primary">{staffData.shipping?.todayOrders || 0}</div>
                   <div className="text-xs text-nexus-text-secondary">出荷完了</div>
                 </div>
                 <div className="bg-nexus-bg-secondary rounded-lg p-4 text-center">
@@ -762,7 +736,7 @@ export default function StaffDashboardPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
                     </svg>
                   </div>
-                  <div className="text-2xl font-bold text-nexus-text-primary">{staffData.staffStats.daily.returnsProcessed}</div>
+                  <div className="text-2xl font-bold text-nexus-text-primary">{staffData.tasks?.completed || 0}</div>
                   <div className="text-xs text-nexus-text-secondary">返品処理</div>
                 </div>
               </div>
@@ -774,22 +748,7 @@ export default function StaffDashboardPage() {
         <div className="intelligence-card global">
           <div className="p-8">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Priority Filter */}
-              <div>
-                <NexusSelect
-                  label="優先度フィルター"
-                  value={filterPriority}
-                  onChange={(e) => setFilterPriority(e.target.value as any)}
-                  options={[
-                    { value: 'all', label: 'すべて' },
-                    { value: 'urgent', label: '緊急タスク' },
-                    { value: 'normal', label: '通常タスク' },
-                    { value: 'high', label: '高優先度' },
-                    { value: 'medium', label: '中優先度' },
-                    { value: 'low', label: '低優先度' }
-                  ]}
-                />
-              </div>
+
 
               {/* Type Filter */}
               <div>
@@ -830,8 +789,8 @@ export default function StaffDashboardPage() {
                   <tr className="border-b border-nexus-border">
                     <th className="text-left p-4 font-medium text-nexus-text-secondary w-[35%]">タスク情報</th>
                     <th className="text-left p-4 font-medium text-nexus-text-secondary w-[20%]">担当者/期限</th>
-                    <th className="text-left p-4 font-medium text-nexus-text-secondary w-[20%]">ステータス</th>
-                    <th className="text-right p-4 font-medium text-nexus-text-secondary w-[25%]">アクション</th>
+                    <th className="text-center p-4 font-medium text-nexus-text-secondary w-[20%]">ステータス</th>
+                    <th className="text-center p-4 font-medium text-nexus-text-secondary w-[25%]">アクション</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -901,9 +860,6 @@ export default function StaffDashboardPage() {
                         </td>
                         <td className="p-4">
                           <div className="flex items-center space-x-2">
-                            <span className="cert-nano cert-premium">
-                              {(priorityLabels[row.priority as keyof typeof priorityLabels] as unknown) as string}
-                            </span>
                             <BusinessStatusIndicator status={row.status} />
                           </div>
                         </td>

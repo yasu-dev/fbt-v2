@@ -126,7 +126,7 @@ export function ReturnInspection() {
                     }`}>
                       {overallStatus === 'pass' ? '検品合格' :
                        overallStatus === 'fail' ? '検品不合格' :
-                       '検品中'}
+                       '保管作業中'}
                     </span>
                   </div>
                 </div>

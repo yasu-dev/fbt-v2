@@ -303,7 +303,7 @@ export default function LocationRegistration({ onRegisterComplete }: LocationReg
                             ? 'success'
                             : 'warning'
                         }`}>
-                          {product.status === 'inspected' ? '検品済' : '検品待ち'}
+                          {product.status === 'inspected' ? '検品済' : '入庫待ち'}
                         </span>
                       </div>
                     </div>

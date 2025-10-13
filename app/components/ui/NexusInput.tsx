@@ -44,12 +44,13 @@ const NexusInput = forwardRef<HTMLInputElement, NexusInputProps>(({
       placeholder-gray-500
     `,
     nexus: hasError ? `
-      bg-nexus-surface border-red-300 text-nexus-text-primary
+      bg-nexus-bg-secondary border-red-300 text-nexus-text-primary
       focus:ring-red-500 focus:border-red-500
       placeholder-nexus-text-secondary
     ` : `
-      bg-nexus-surface border-nexus-border text-nexus-text-primary
-      focus:ring-primary-blue focus:border-primary-blue
+      bg-nexus-bg-secondary border-gray-300 text-nexus-text-primary
+      focus:ring-[#0064D2] focus:border-[#0064D2]
+      hover:border-gray-400
       placeholder-nexus-text-secondary
     `,
     enterprise: hasError ? `

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { BaseModal, NexusButton, NexusInput, NexusTextarea, NexusCheckbox } from '../ui';
 
@@ -21,35 +21,52 @@ interface Carrier {
 }
 
 export default function CarrierSettingsModal({ isOpen, onClose, onSave }: CarrierSettingsModalProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [carriers, setCarriers] = useState<Carrier[]>([
     {
-      id: 'yamato',
-      name: 'ヤマト運輸',
+      id: 'fedex',
+      name: 'FedEx',
       active: true,
-      defaultRate: 800,
-      trackingUrl: 'https://toi.kuronekoyamato.co.jp/cgi-bin/tneko',
-      apiKey: '',
-      notes: '通常配送'
+      defaultRate: 1200,
+      trackingUrl: 'https://www.fedex.com/apps/fedextrack/',
+      apiKey: 'configured',
+      notes: 'API連携対応・国際配送対応'
     },
     {
-      id: 'sagawa',
-      name: '佐川急便',
+      id: 'dhl',
+      name: 'DHL',
       active: true,
-      defaultRate: 750,
-      trackingUrl: 'https://k2k.sagawa-exp.co.jp/p/sagawa/web/okurijoinput.jsp',
+      defaultRate: 1800,
+      trackingUrl: 'https://www.dhl.com/jp-ja/home/tracking.html',
       apiKey: '',
-      notes: '大型商品対応'
+      notes: '国際宅配便・伝票作成Webサイトにジャンプ'
     },
     {
-      id: 'yupack',
-      name: 'ゆうパック',
-      active: false,
-      defaultRate: 700,
+      id: 'ems',
+      name: 'EMS',
+      active: true,
+      defaultRate: 1500,
       trackingUrl: 'https://trackings.post.japanpost.jp/services/srv/search/',
       apiKey: '',
-      notes: '離島配送可能'
+      notes: '国際スピード郵便・伝票作成Webサイトにジャンプ'
+    },
+    {
+      id: 'others',
+      name: 'その他（eBay SpeedPAK、クロネコヤマトなど）',
+      active: true,
+      defaultRate: 1000,
+      trackingUrl: '',
+      apiKey: '',
+      notes: 'その他配送業者・各社伝票作成サイトを利用'
     }
   ]);
+
+  // スクロール位置のリセット
+  useEffect(() => {
+    if (isOpen && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
 
   const handleCarrierChange = (carrierId: string, field: keyof Carrier, value: any) => {
     setCarriers(prev => prev.map(carrier => 
@@ -74,7 +91,7 @@ export default function CarrierSettingsModal({ isOpen, onClose, onSave }: Carrie
       size="lg"
       className="max-w-4xl"
     >
-      <div className="max-h-[90vh] overflow-y-auto">
+      <div className="max-h-[90vh] overflow-y-auto" ref={scrollContainerRef}>
 
         
         <div className="space-y-6">
@@ -141,20 +158,18 @@ export default function CarrierSettingsModal({ isOpen, onClose, onSave }: Carrie
           ))}
         </div>
         
-        <div className="flex gap-2 pt-6">
-          <NexusButton
-            onClick={handleSave}
-            variant="primary"
-            className="flex-1"
-          >
-            保存
-          </NexusButton>
+        <div className="flex justify-end gap-2 pt-6">
           <NexusButton
             onClick={onClose}
             variant="secondary"
-            className="flex-1"
           >
             キャンセル
+          </NexusButton>
+          <NexusButton
+            onClick={handleSave}
+            variant="primary"
+          >
+            保存
           </NexusButton>
         </div>
       </div>

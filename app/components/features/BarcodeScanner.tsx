@@ -62,7 +62,8 @@ export default function BarcodeScanner({
 
     // 短時間で入力が完了した場合はスキャナーからの入力と判定
     scanTimeoutRef.current = setTimeout(() => {
-      if (newValue.length >= 8) { // 最小バーコード長
+      const minLength = scanType === 'location' ? 4 : 8; // ロケーションは短いコードもあり得る
+      if (newValue.length >= minLength) {
         handleScan(newValue);
       }
       setIsScanning(false);
@@ -188,8 +189,11 @@ export default function BarcodeScanner({
       // 商品バーコード: JAN/EAN/UPC形式など
       return /^[0-9]{8,13}$/.test(barcode) || /^TWD-\d{8}-\d{5}$/.test(barcode);
     } else if (type === 'location') {
-      // ロケーションバーコード: 独自形式
-      return /^[A-Z]-\d{2}$/.test(barcode) || /^[A-Z]\d{2}$/.test(barcode);
+      // ロケーションバーコード: 独自形式（短縮/長形式の両方を許容）
+      // 例: A-01, A01, A-01-001
+      return /^[A-Z]-\d{2}$/.test(barcode)
+        || /^[A-Z]\d{2}$/.test(barcode)
+        || /^[A-Z]-\d{2}-\d{3}$/.test(barcode);
     }
     
     return true;
@@ -258,7 +262,7 @@ export default function BarcodeScanner({
               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                 lastProductData.status === 'ready_for_listing' ? 'bg-green-100 text-green-800' :
                 lastProductData.status === 'storage' ? 'bg-blue-100 text-blue-800' :
-                lastProductData.status === 'needs_review' ? 'bg-yellow-100 text-yellow-800' :
+                                  lastProductData.status === 'needs_review' ? 'bg-orange-600 text-white' :
                 'bg-nexus-bg-secondary text-nexus-text-secondary'
               }`}>
                 {lastProductData.status === 'ready_for_listing' ? '出品準備完了' :

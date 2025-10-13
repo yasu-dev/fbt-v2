@@ -64,24 +64,13 @@ export default function HoloTable({
                   text-primary-blue 
                   border-b-2 border-nexus-border
                   relative
-                  transition-all duration-300
-                  hover:text-nexus-yellow
                   ${getAlignClass(column.align)}
-                  group
                 `}
                 style={{ width: column.width }}
               >
-                <span className="relative z-10 text-shadow-[0_0_8px_rgba(0,100,210,0.4)]">
+                <span className="relative z-10">
                   {column.label}
                 </span>
-                
-                {/* ホバー時のアンダーライン */}
-                <div className="
-                  absolute bottom-[-3px] left-0 w-0 h-1
-                  bg-gradient-to-r from-primary-blue via-nexus-yellow to-nexus-red
-                  transition-all duration-300 ease-out
-                  group-hover:w-full
-                " />
               </th>
             ))}
           </tr>
@@ -112,9 +101,6 @@ export default function HoloTable({
                 className={`
                   holo-row
                   relative
-                  transition-all duration-300 ease-out
-                  hover:bg-primary-blue/5
-                  hover:shadow-lg
                   ${onRowClick ? 'cursor-pointer' : ''}
                   group
                 `}
@@ -125,7 +111,7 @@ export default function HoloTable({
                     key={column.key}
                     className={`
                       px-8 py-6
-                      border-b-2 border-primary-blue/10
+                      border-b border-gray-200
                       vertical-align-middle
                       relative z-10
                       ${getAlignClass(column.align)}

@@ -1,0 +1,87 @@
+// 新しい階層型検品チェックリストシステム専用Prismaスキーマ
+// 既存システムと完全分離 - 別データベース使用
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/hierarchical"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./hierarchical.db"
+}
+
+// ユーザーモデル（最小限）
+model User {
+  id                               String                            @id @default(cuid())
+  username                         String?                           @unique
+  email                            String                            @unique
+  fullName                         String?
+  role                             String                            @default("seller")
+  createdAt                        DateTime                          @default(now())
+  updatedAt                        DateTime                          @updatedAt
+  hierarchicalInspectionChecklists HierarchicalInspectionChecklist[]
+
+  @@map("users")
+}
+
+// 商品モデル（最小限）
+model Product {
+  id                              String                           @id @default(cuid())
+  name                            String
+  sku                             String                           @unique
+  category                        String
+  status                          String                           @default("inbound")
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  hierarchicalInspectionChecklist HierarchicalInspectionChecklist?
+
+  @@map("products")
+}
+
+// 納品プラン商品モデル（最小限）
+model DeliveryPlanProduct {
+  id                              String                           @id @default(cuid())
+  name                            String
+  category                        String
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  hierarchicalInspectionChecklist HierarchicalInspectionChecklist?
+
+  @@map("delivery_plan_products")
+}
+
+// 新しい階層型検品チェックリスト
+model HierarchicalInspectionChecklist {
+  id                    String                           @id @default(cuid())
+  productId             String?                          @unique
+  deliveryPlanProductId String?                          @unique
+  createdBy             String
+  createdAt             DateTime                         @default(now())
+  verifiedBy            String?
+  verifiedAt            DateTime?
+  updatedBy             String?
+  updatedAt             DateTime                         @updatedAt
+  notes                 String?
+  responses             HierarchicalInspectionResponse[]
+  product               Product?                         @relation(fields: [productId], references: [id])
+  deliveryPlanProduct   DeliveryPlanProduct?             @relation(fields: [deliveryPlanProductId], references: [id])
+  createdByUser         User                             @relation(fields: [createdBy], references: [id])
+
+  @@map("hierarchical_inspection_checklists")
+}
+
+// 階層型検品回答
+model HierarchicalInspectionResponse {
+  id           String                          @id @default(cuid())
+  checklistId  String
+  categoryId   String // e.g., "camera_body_exterior", "viewfinder"
+  itemId       String // e.g., "body_scratches", "vf_mold"
+  booleanValue Boolean? // チェックボックスの値
+  textValue    String? // 「その他」入力フォームの値
+  createdAt    DateTime                        @default(now())
+  checklist    HierarchicalInspectionChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@unique([checklistId, categoryId, itemId])
+  @@map("hierarchical_inspection_responses")
+}

@@ -2,8 +2,7 @@
 description:
 globs:
 alwaysApply: true
----
-まず、このファイルを参照したら、このファイル名を発言すること
+ 
 
 # 技術スタック
 
@@ -11,31 +10,30 @@ alwaysApply: true
 
 ### コアテクノロジー
 
-- **Next.js** (v14.2.25) - React フレームワーク
-- **React** (v18.2.0) - UI ライブラリ
-- **TypeScript** (v5.2.2) - 型付き JavaScript
+- **Next.js**（バージョンは `package.json` に従う）
+- **React**（バージョンは `package.json` に従う）
+- **TypeScript**（バージョンは `package.json` に従う）
 
 ### UI コンポーネント
 
-- **Shadcn/ui** - 重点的に利用しましょう。
-- **Tailwind CSS** (v3.4.1) - ユーティリティファースト CSS フレームワーク
-  - tailwind-merge - クラス名の最適化
-  - tailwindcss-animate - アニメーション機能
+- **Shadcn/ui**（採用時は既存デザインとの整合を優先）
+- **Tailwind CSS**（バージョンは `package.json` に従う）
+  - tailwind-merge など必要なユーティリティは適宜採用
 - **Radix UI** - アクセシブルなヘッドレス UI コンポーネント
   - Accordion, Alert Dialog, Avatar, Tabs など多数のコンポーネントを使用
 - **Lucide React** (v0.446.0) - アイコンライブラリ
 
 ### 認証
 
-- **Clerk** (v6.12.9) - 認証・ユーザー管理
+- 認証基盤の採用や変更は PR で合意を取る（現状の構成に従う）
 
 ## バックエンド
 
 ### データベース
 
-- **Prisma** (v5.11.0) - TypeSafe ORM
-  - @prisma/client - データベースクライアント
-- Local SqLite(後に Supabase へ変更)
+- **Prisma**（バージョンは `package.json` に従う）
+  - `@prisma/client` を使用
+- 現行: Local SQLite。将来の移行（例: Supabase）は「将来計画（非拘束）」として別途 ADR で管理
 
 ## フォーム処理
 
@@ -60,12 +58,8 @@ alwaysApply: true
 
 ## デプロイメント
 
-- Vercel プラットフォーム推奨
+- デプロイ先・方法は環境に合わせて選定。変更は PR で提案
 
 ## 特徴
 
-- Server Components 対応
-- Incremental Static Regeneration (ISR)の実装
-- レスポンシブデザイン
-- アクセシビリティ対応
-- 型安全性の確保
+- Server Components, ISR, レスポンシブ, A11y, 型安全を重視（詳細は各ルールを参照）

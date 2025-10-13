@@ -404,7 +404,7 @@ export default function InventoryAnalytics({ dateRange }: InventoryAnalyticsProp
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      item.days > 120 ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                      item.days > 120 ? 'bg-red-100 text-red-800' : 'bg-orange-600 text-white'
                     }`}>
                       {item.days}日
                     </span>

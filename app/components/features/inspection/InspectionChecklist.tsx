@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import NexusCard from '@/app/components/ui/NexusCard';
 import NexusButton from '@/app/components/ui/NexusButton';
+import NexusCheckbox from '@/app/components/ui/NexusCheckbox';
 
 export interface InspectionChecklistProps {
   category: string;
@@ -28,6 +30,8 @@ export interface InspectionChecklistProps {
   onUpdate: (category: string, item: string, value: boolean) => void;
   onNext: () => void;
   onPrev: () => void;
+  onSaveAndReturn?: () => void;
+  loading?: boolean;
 }
 
 interface CheckItem {
@@ -42,40 +46,35 @@ export default function InspectionChecklist({
   onUpdate,
   onNext,
   onPrev,
+  onSaveAndReturn,
+  loading = false,
 }: InspectionChecklistProps) {
-  // 検品項目の定義
+  // 検品項目の定義（12項目統一・任意チェック）
   const checkItems: { [key: string]: CheckItem[] } = {
-    exterior: [
-      { key: 'scratches', label: '傷の有無', description: '本体に目立つ傷がないか確認' },
-      { key: 'dents', label: 'へこみ', description: '落下痕や打痕がないか確認' },
-      { key: 'discoloration', label: '変色・退色', description: '色あせや変色がないか確認' },
-      { key: 'dust', label: 'ホコリ・汚れ', description: '清掃が必要な汚れがないか確認' },
-    ],
-    functionality: [
-      { key: 'powerOn', label: '電源ON/OFF', description: '正常に起動・終了するか確認' },
-      { key: 'allButtonsWork', label: 'ボタン動作', description: 'すべてのボタンが正常に動作するか' },
-      { key: 'screenDisplay', label: '画面表示', description: 'LCD/EVFが正常に表示されるか' },
-      { key: 'connectivity', label: '接続端子', description: 'USB/HDMI等の端子が正常か' },
-    ],
-    optical: [
-      { key: 'lensClarity', label: 'レンズ透明度', description: 'カビ・曇り・傷がないか確認' },
-      { key: 'aperture', label: '絞り動作', description: '絞り羽根が正常に動作するか' },
-      { key: 'focusAccuracy', label: 'フォーカス精度', description: 'AF/MFが正確に動作するか' },
-      { key: 'stabilization', label: '手ぶれ補正', description: '手ぶれ補正機能が動作するか' },
+    issues: [
+      { key: 'exteriorScratches', label: '傷', description: 'カメラボディの傷がある場合チェック' },
+      { key: 'dentsImpacts', label: '凹み', description: 'カメラボディの凹みがある場合チェック' },
+      { key: 'missingParts', label: 'スレ', description: 'カメラボディのスレがある場合チェック' },
+      { key: 'dirtDust', label: '汚れ', description: 'カメラボディの汚れがある場合チェック' },
+      { key: 'agingDeterioration', label: 'キズ', description: '光学系のキズがある場合チェック' },
+      { key: 'functionalIssues', label: '作動', description: '露出機能が作動する場合チェック' },
+      { key: 'controlIssues', label: '不動', description: '露出機能が不動の場合チェック' },
+      { key: 'displayIssues', label: 'クモリ', description: 'ファインダーのクモリがある場合チェック' },
+      { key: 'coreComponentIssues', label: 'チリホコリ', description: '光学系のチリホコリがある場合チェック' },
+      { key: 'waterproofIssues', label: 'カビ', description: 'ファインダーのカビがある場合チェック' },
+      { key: 'accessoryDiscrepancy', label: 'バッテリー', description: 'バッテリーがある場合チェック' },
+      { key: 'warrantyAuthenticity', label: 'ケース', description: 'ケースがある場合チェック' },
     ],
   };
 
-  // カメラボディの場合のみ光学系チェックを表示
-  const showOptical = category === 'camera_body' || category === 'lens';
-
-  // すべての必須項目がチェックされているか確認
-  const isAllChecked = () => {
-    const exteriorChecked = Object.values(checklist.exterior).every(v => v !== false);
-    const functionalityChecked = Object.values(checklist.functionality).every(v => v !== false);
-    const opticalChecked = !showOptical || 
-      (checklist.optical && Object.values(checklist.optical).every(v => v !== false));
+  // 一括チェック機能
+  const handleBulkCheck = (sectionKey: string, checked: boolean) => {
+    const section = checkItems[sectionKey];
+    if (!section) return;
     
-    return exteriorChecked && functionalityChecked && opticalChecked;
+    section.forEach(item => {
+      onUpdate(sectionKey, item.key, checked);
+    });
   };
 
   const renderCheckSection = (
@@ -88,139 +87,135 @@ export default function InspectionChecklist({
     if (!sectionData) return null;
 
     return (
-      <NexusCard className="p-4 sm:p-6 hover:shadow-lg transition-shadow">
-        <div className="flex items-center mb-4">
-          <div className="w-8 h-8 mr-3 text-blue-600">
-            {sectionIcon}
+      <NexusCard className="p-3 hover:shadow-md transition-shadow">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center">
+            <div className="w-5 h-5 mr-2 text-blue-600">
+              {sectionIcon}
+            </div>
+            <h3 className="text-sm font-semibold">{sectionTitle}</h3>
           </div>
-          <h3 className="text-lg font-semibold">{sectionTitle}</h3>
+          <button
+            onClick={() => {
+              const allChecked = items.every(item => 
+                sectionData[item.key as keyof typeof sectionData]
+              );
+              handleBulkCheck(sectionKey, !allChecked);
+            }}
+            className="text-xs px-2 py-1 rounded-md bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+          >
+            {items.every(item => sectionData[item.key as keyof typeof sectionData]) ? '全解除' : '一括チェック'}
+          </button>
         </div>
-        <div className="space-y-3 sm:space-y-4">
-          {items.map(item => (
-            <label
-              key={item.key}
-              className="flex items-start p-2 sm:p-3 md:p-4 rounded-lg border-2 border-gray-200 hover:border-blue-300 cursor-pointer transition-all"
-            >
-              <input
-                type="checkbox"
-                checked={sectionData[item.key as keyof typeof sectionData] || false}
-                onChange={(e) => onUpdate(sectionKey, item.key, e.target.checked)}
-                className="mt-1 w-4 h-4 sm:w-5 sm:h-5 text-blue-600 rounded focus:ring-blue-500 flex-shrink-0"
-              />
-              <div className="ml-2 sm:ml-3 md:ml-4 flex-1 min-w-0">
-                <div className="font-medium text-gray-900 text-xs sm:text-sm md:text-base">{item.label}</div>
-                <div className="text-xs sm:text-sm text-gray-600 mt-1 break-words">{item.description}</div>
+        <div className="grid grid-cols-2 gap-1">
+          {items.map(item => {
+            const isChecked = sectionData[item.key as keyof typeof sectionData] || false;
+            return (
+              <div
+                key={item.key}
+                className={`
+                  p-2 rounded-md border transition-all text-xs
+                  ${isChecked
+                    ? 'border-green-400 bg-green-50 shadow-sm ring-1 ring-green-200'
+                    : 'border-gray-200 bg-white hover:border-blue-300'
+                  }
+                `}
+              >
+                <NexusCheckbox
+                  checked={isChecked}
+                  onChange={(e) => onUpdate(sectionKey, item.key, e.target.checked)}
+                  label={item.label}
+                  description={item.description}
+                  variant="nexus"
+                  size="md"
+                />
               </div>
-            </label>
-          ))}
+            );
+          })}
         </div>
       </NexusCard>
     );
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-3 sm:p-4">
+    <div className="space-y-3">
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
         <div className="flex items-start">
-          <div className="w-6 h-6 mr-3 text-yellow-600 flex-shrink-0">
+          <div className="w-4 h-4 mr-2 text-yellow-600 flex-shrink-0 mt-0.5">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
           <div className="min-w-0">
-            <h4 className="font-semibold text-yellow-800 text-sm sm:text-base">検品時の注意事項</h4>
-            <p className="text-xs sm:text-sm text-yellow-700 mt-1">
-              各項目を慎重にチェックし、問題がない場合のみチェックを入れてください。
-              不明な点がある場合は、管理者に確認してください。
-            </p>
+            <h4 className="font-semibold text-yellow-800 text-xs">検品時の注意事項</h4>
+            <ul className="text-xs text-yellow-700 mt-1 space-y-0.5">
+              <li>• 該当する項目のみチェックしてください（0個でも可）</li>
+              <li>• 不明な点は管理者に確認してください</li>
+              <li>• 一括チェックボタンで効率的に入力できます</li>
+            </ul>
           </div>
         </div>
       </div>
 
-      {/* 外観チェック */}
+      {/* 統一検品チェック（12項目） */}
       {renderCheckSection(
-        'exterior',
-        '外観チェック',
+        'issues',
+        '検品チェックリスト（該当項目のみチェック）',
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>,
-        checkItems.exterior
+        checkItems.issues
       )}
 
-      {/* 機能チェック */}
-      {renderCheckSection(
-        'functionality',
-        '機能チェック',
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>,
-        checkItems.functionality
-      )}
-
-      {/* 光学系チェック（カメラ・レンズのみ） */}
-      {showOptical && checklist.optical && renderCheckSection(
-        'optical',
-        '光学系チェック',
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>,
-        checkItems.optical
-      )}
-
-      {/* 進捗表示 */}
-                      <div className="bg-nexus-bg-secondary rounded-lg p-3 sm:p-4 border border-nexus-border">
+      {/* 進捗表示 - 改善版 */}
+      <div className="bg-gradient-to-r from-blue-50 to-green-50 rounded-lg p-3 border border-blue-200">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-sm font-medium text-gray-700">検品進捗</span>
-          <span className="text-xs sm:text-sm text-gray-600">
-            {Object.values(checklist).flatMap(section => 
-              Object.values(section || {})
-            ).filter(v => v).length} / {
-              Object.values(checklist).flatMap(section => 
-                Object.values(section || {})
-              ).length
-            } 項目
+          <span className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            チェック済み項目
+          </span>
+          <span className="text-sm font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full">
+            {checklist.issues ? Object.values(checklist.issues).filter(v => v).length : 0} / 12 項目
           </span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2 sm:h-3">
+        <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
           <div
-            className="bg-blue-600 h-2 sm:h-3 rounded-full transition-all duration-300"
+            className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-500 ease-out"
             style={{
-              width: `${
-                (Object.values(checklist).flatMap(section => 
-                  Object.values(section || {})
-                ).filter(v => v).length / 
-                Object.values(checklist).flatMap(section => 
-                  Object.values(section || {})
-                ).length) * 100
-              }%`
+              width: `${((checklist.issues ? Object.values(checklist.issues).filter(v => v).length : 0) / 12) * 100}%`
             }}
           />
         </div>
+        <p className="text-xs text-gray-600 mt-1 text-center">
+          該当する項目のみチェックしてください（0個でも進行可能）
+        </p>
       </div>
 
       {/* ナビゲーションボタン */}
-      <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0 pt-4">
-        <NexusButton
-          onClick={onPrev}
-          variant="secondary"
-          size="lg"
-          className="w-full sm:w-auto"
-        >
-          戻る
-        </NexusButton>
+      <div className="flex justify-between gap-3 pt-2">
+        {onSaveAndReturn && (
+          <NexusButton
+            onClick={onSaveAndReturn}
+            variant="outline"
+            size="md"
+            disabled={loading}
+            className="flex-1 sm:flex-none"
+          >
+            {loading ? '保存中...' : '保存して一覧に戻る'}
+          </NexusButton>
+        )}
         <NexusButton
           onClick={onNext}
           variant="primary"
-          size="lg"
-          disabled={!isAllChecked()}
-          className="w-full sm:w-auto"
+          size="md"
+          disabled={loading}
+          className="flex-1 sm:flex-none"
         >
           次へ（写真撮影）
         </NexusButton>
       </div>
     </div>
   );
-} 
+}

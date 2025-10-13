@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { XMarkIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { useToast } from '@/app/components/features/notifications/ToastProvider';
 import { BaseModal, NexusButton } from './ui';
@@ -11,10 +11,18 @@ interface LocationOptimizationModalProps {
 }
 
 export default function LocationOptimizationModal({ isOpen, onClose }: LocationOptimizationModalProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<any>(null);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const { showToast } = useToast();
+
+  // スクロール位置のリセット
+  useEffect(() => {
+    if (isOpen && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
 
   const demoItems = [
     { id: '1', name: 'Canon EOS R5', currentLocation: 'A-1-001', suggestedLocation: 'A-2-003', reason: 'アクセス頻度が高い' },
@@ -94,7 +102,7 @@ export default function LocationOptimizationModal({ isOpen, onClose }: LocationO
           </div>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]" ref={scrollContainerRef}>
           {!optimizationResult ? (
             <div className="text-center py-12">
               {isOptimizing ? (

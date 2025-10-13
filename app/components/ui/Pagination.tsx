@@ -55,24 +55,28 @@ export default function Pagination({
     return rangeWithDots;
   };
 
+
+
+  // ページが1つしかない場合は表示しない
   if (totalPages <= 1) return null;
+  if (totalItems === 0) return null;
 
   return (
-    <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 ${className}`}>
+    <div className={`flex flex-col sm:flex-row items-center justify-between gap-6 ${className}`}>
       {/* 件数表示 */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-6">
         <span className="text-sm text-nexus-text-secondary">
           {totalItems > 0 ? `${startItem}-${endItem}` : '0'} / {totalItems}件
         </span>
         
         {/* 表示件数選択 */}
         {showItemsPerPage && onItemsPerPageChange && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-sm text-nexus-text-secondary">表示件数:</span>
             <select
               value={itemsPerPage}
               onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
-              className="px-2 py-1 text-sm border border-nexus-border rounded-md bg-nexus-bg-primary text-nexus-text-primary focus:outline-none focus:ring-2 focus:ring-nexus-blue focus:border-transparent"
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-md bg-white text-nexus-text-primary focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-transparent min-w-[60px]"
             >
               {itemsPerPageOptions.map(option => (
                 <option key={option} value={option}>
@@ -85,16 +89,16 @@ export default function Pagination({
       </div>
 
       {/* ページネーション */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         {/* 前へボタン */}
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
           className={`
-            p-2 rounded-md transition-colors
+            p-2 rounded-md
             ${currentPage === 1 
               ? 'text-nexus-text-disabled cursor-not-allowed' 
-              : 'text-nexus-text-primary hover:bg-nexus-bg-secondary'
+              : 'text-nexus-text-primary cursor-pointer'
             }
           `}
           aria-label="前のページ"
@@ -111,10 +115,10 @@ export default function Pagination({
               <button
                 onClick={() => onPageChange(page as number)}
                 className={`
-                  px-3 py-2 rounded-md text-sm font-medium transition-colors
+                  px-3 py-2 rounded-md text-sm font-medium
                   ${page === currentPage
-                    ? 'bg-nexus-blue text-white'
-                    : 'text-nexus-text-primary hover:bg-nexus-bg-secondary'
+                    ? 'bg-primary-blue text-white'
+                    : 'text-nexus-text-primary cursor-pointer'
                   }
                 `}
               >
@@ -129,10 +133,10 @@ export default function Pagination({
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
           className={`
-            p-2 rounded-md transition-colors
+            p-2 rounded-md
             ${currentPage === totalPages 
               ? 'text-nexus-text-disabled cursor-not-allowed' 
-              : 'text-nexus-text-primary hover:bg-nexus-bg-secondary'
+              : 'text-nexus-text-primary cursor-pointer'
             }
           `}
           aria-label="次のページ"

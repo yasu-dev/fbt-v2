@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import NexusCard from '@/app/components/ui/NexusCard';
 import NexusButton from '@/app/components/ui/NexusButton';
 import EbayListingForm from '../EbayListingForm';
 import { useToast } from '@/app/components/features/notifications/ToastProvider';
 import BaseModal from '@/app/components/ui/BaseModal';
+import Pagination from '@/app/components/ui/Pagination';
 import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 
 interface Product {
@@ -32,6 +33,10 @@ export default function ListingManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isBatchConfirmModalOpen, setIsBatchConfirmModalOpen] = useState(false);
 
+  // ページネーション状態
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
+
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -39,54 +44,36 @@ export default function ListingManager() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      // モックデータ（実際にはAPIから取得）
-      const mockProducts: Product[] = [
-        {
-          id: '1',
-          sku: 'TWD-CAM-001',
-          name: 'Canon EOS R5',
-          category: 'カメラ本体',
-          price: 450000,
-          condition: 'A',
-          status: 'ready',
-          location: 'A-01',
-          lastUpdated: '2024-06-28T10:00:00',
-        },
-        {
-          id: '2',
-          sku: 'TWD-LEN-005',
-          name: 'Canon RF 24-70mm F2.8',
-          category: 'レンズ',
-          price: 198000,
-          condition: 'A+',
-          status: 'listed',
-          location: 'A-15',
-          lastUpdated: '2024-06-27T14:30:00',
-        },
-        {
-          id: '3',
-          sku: 'TWD-WAT-007',
-          name: 'Rolex GMT Master',
-          category: '腕時計',
-          price: 2100000,
-          condition: 'S',
-          status: 'pending',
-          location: 'V-03',
-          lastUpdated: '2024-06-27T09:00:00',
-        },
-        {
-          id: '4',
-          sku: 'TWD-CAM-012',
-          name: 'Sony α7R V',
-          category: 'カメラ本体',
-          price: 320000,
-          condition: 'B+',
-          status: 'ready',
-          location: 'H2-08',
-          lastUpdated: '2024-06-25T16:00:00',
-        },
-      ];
-      setProducts(mockProducts);
+      // APIから実際のデータを取得
+      const response = await fetch('/api/inventory?status=storage,listing');
+      if (response.ok) {
+        const data = await response.json();
+        const products: Product[] = data.data.map((item: any) => ({
+          id: item.id,
+          sku: item.sku,
+          name: item.name,
+          category: item.category.replace('camera_body', 'カメラ本体')
+                                 .replace('camera', 'カメラ')
+                                 .replace('lens', 'レンズ')
+                                 .replace('watch', '腕時計')
+                                 .replace('accessory', 'アクセサリ'),
+          price: item.price || 0,
+          condition: item.condition.replace('new', 'S')
+                                  .replace('like_new', 'A+')
+                                  .replace('excellent', 'A')
+                                  .replace('very_good', 'A-')
+                                  .replace('good', 'B+')
+                                  .replace('fair', 'B')
+                                  .replace('poor', 'C'),
+          status: item.status === 'storage' ? 'ready' : 
+                  item.status === 'listing' ? 'listed' : 'pending',
+          location: item.location || '未設定',
+          lastUpdated: item.updatedAt || new Date().toISOString(),
+        }));
+        setProducts(products);
+      } else {
+        throw new Error('Failed to fetch products');
+      }
     } catch (error) {
       console.error('[ERROR] Fetching products:', error);
     } finally {
@@ -95,10 +82,10 @@ export default function ListingManager() {
   };
 
   const handleSelectAll = () => {
-    if (selectedProducts.length === filteredProducts.length) {
+    if (selectedProducts.length === paginatedProducts.length) {
       setSelectedProducts([]);
     } else {
-      setSelectedProducts(filteredProducts.map(p => p.id));
+      setSelectedProducts(paginatedProducts.map(p => p.id));
     }
   };
 
@@ -157,6 +144,16 @@ export default function ListingManager() {
       product.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesStatus && matchesSearch;
   });
+
+  // ページネーション計算
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredProducts.slice(startIndex, endIndex);
+  }, [filteredProducts, currentPage, itemsPerPage]);
+
+  const totalItems = filteredProducts.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
 
   if (loading) {
     return (
@@ -232,21 +229,21 @@ export default function ListingManager() {
                 <th className="w-12 px-4 py-3">
                   <input
                     type="checkbox"
-                    checked={selectedProducts.length === filteredProducts.length && filteredProducts.length > 0}
+                    checked={selectedProducts.length === paginatedProducts.length && paginatedProducts.length > 0}
                     onChange={handleSelectAll}
                     className="w-4 h-4 text-nexus-blue rounded border-nexus-border focus:ring-nexus-blue"
                   />
                 </th>
                 <th className="text-left">商品情報</th>
-                <th className="text-left">カテゴリー</th>
+                <th className="text-center">カテゴリー</th>
                 <th className="text-left">価格</th>
                 <th className="text-left">コンディション</th>
-                <th className="text-left">ステータス</th>
-                <th className="text-right">アクション</th>
+                <th className="text-center">ステータス</th>
+                <th className="text-center">アクション</th>
               </tr>
             </thead>
           <tbody className="holo-body">
-            {filteredProducts.map((product) => (
+            {paginatedProducts.map((product) => (
               <tr key={product.id} className="holo-row">
                 <td className="px-4 py-4">
                   <input
@@ -296,12 +293,26 @@ export default function ListingManager() {
                 </td>
               </tr>
                       ))}
-        </tbody>
+                </tbody>
       </table>
-        </div>
       </div>
 
-      {filteredProducts.length === 0 && (
+      {/* ページネーション */}
+      {totalItems > 0 && (
+        <div className="mt-6 pt-4 border-t border-nexus-border">
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            totalItems={totalItems}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={setItemsPerPage}
+          />
+        </div>
+      )}
+      </div>
+
+      {paginatedProducts.length === 0 && filteredProducts.length === 0 && (
         <div className="text-center py-12">
           <p className="text-nexus-text-secondary">該当する商品が見つかりません</p>
         </div>

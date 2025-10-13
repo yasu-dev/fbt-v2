@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PrismaClient } from '@prisma/client';
+import { AuthService } from '@/lib/auth';
+
+const prisma = new PrismaClient();
 
 interface Notification {
   id: string;
@@ -9,144 +13,194 @@ interface Notification {
   read: boolean;
   action?: string;
   priority?: 'high' | 'medium' | 'low';
+  notificationType?: string; // 通知設定でのフィルタリング用
 }
 
-// セラー向け通知
-const sellerNotifications: Notification[] = [
-  {
-    id: '1',
-    type: 'success',
-    title: '商品が売れました！',
-    message: 'Canon EOS R5が¥450,000で売却されました',
-    timestamp: '2025-01-26T10:30:00Z',
-    read: false,
-    action: 'sales',
-    priority: 'high'
-  },
-  {
-    id: '2',
-    type: 'warning',
-    title: '在庫滞留アラート',
-    message: 'Nikon D850が30日以上在庫にあります',
-    timestamp: '2025-01-26T09:15:00Z',
-    read: false,
-    action: 'inventory',
-    priority: 'medium'
-  },
-  {
-    id: '3',
-    type: 'info',
-    title: '検品完了',
-    message: 'Rolex Submariner Dateの検品が完了しました',
-    timestamp: '2025-01-26T08:45:00Z',
-    read: true,
-    action: 'inventory'
-  },
-  {
-    id: '4',
-    type: 'info',
-    title: '月次レポート準備完了',
-    message: '2025年1月の販売レポートが確認できます',
-    timestamp: '2025-01-26T00:00:00Z',
-    read: false,
-    action: 'reports'
-  },
-  {
-    id: '5',
-    type: 'success',
-    title: '入金確認',
-    message: '売上金¥1,234,567が振り込まれました',
-    timestamp: '2025-01-25T15:00:00Z',
-    read: true,
-    action: 'billing',
-    priority: 'high'
-  }
-];
-
-// スタッフ向け通知
-const staffNotifications: Notification[] = [
-  {
-    id: '1',
-    type: 'error',
-    title: '緊急検品タスク',
-    message: 'Rolex GMT Master IIの高額商品検品が必要です',
-    timestamp: '2025-01-26T10:45:00Z',
-    read: false,
-    action: 'tasks',
-    priority: 'high'
-  },
-  {
-    id: '2',
-    type: 'warning',
-    title: '返品処理待ち',
-    message: 'Canon R5の返品再検品が3件待機中です',
-    timestamp: '2025-01-26T10:00:00Z',
-    read: false,
-    action: 'returns',
-    priority: 'high'
-  },
-  {
-    id: '3',
-    type: 'info',
-    title: '新規入庫',
-    message: '本日8件の商品が入庫予定です',
-    timestamp: '2025-01-26T08:00:00Z',
-    read: false,
-    action: 'tasks'
-  },
-  {
-    id: '4',
-    type: 'success',
-    title: '出荷完了',
-    message: '本日の出荷タスク12件が完了しました',
-    timestamp: '2025-01-25T18:00:00Z',
-    read: true,
-    action: 'shipping'
-  },
-  {
-    id: '5',
-    type: 'info',
-    title: 'シフト変更のお知らせ',
-    message: '来週のシフトが更新されました',
-    timestamp: '2025-01-25T17:00:00Z',
-    read: true,
-    action: 'system'
-  }
-];
+// ハードコードされたデモデータを削除（実際の通知のみ使用）
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const role = searchParams.get('role');
-  
-  // ロールに基づいて適切な通知を返す
-  const notifications = role === 'staff' ? staffNotifications : sellerNotifications;
-  
-  // タイムスタンプでソート（新しい順）
-  const sortedNotifications = [...notifications].sort((a, b) => 
-    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
-  
-  return NextResponse.json(sortedNotifications);
+  try {
+    console.log('[DEBUG] 通知API開始');
+    const searchParams = request.nextUrl.searchParams;
+    const role = searchParams.get('role');
+    console.log('[DEBUG] リクエストロール:', role);
+    
+    // ユーザー認証（オプション、ゲスト表示も考慮）
+    let userSettings = null;
+    let userId = null;
+    
+    try {
+      const user = await AuthService.requireRole(request, ['seller', 'staff', 'admin']);
+      if (user) {
+        userId = user.id;
+        // ユーザーの通知設定を取得
+        const userData = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { notificationSettings: true }
+        });
+
+        if (userData?.notificationSettings) {
+          userSettings = JSON.parse(userData.notificationSettings);
+        }
+      }
+    } catch (error) {
+      // 認証エラーは無視してデフォルト通知を表示
+      console.log('通知取得時の認証エラー（ゲストモード）:', error);
+    }
+    
+    // データベースから実際の通知を取得
+    let notifications = [];
+    
+    // 🔧 SAFE FIX: role=staffの場合は直接Raw SQLで通知取得
+    if (role === 'staff') {
+      try {
+        console.log('[DEBUG] スタッフ通知直接取得開始');
+        const staffNotifications = await prisma.$queryRaw`
+          SELECT n.* FROM notifications n 
+          JOIN users u ON n.userId = u.id 
+          WHERE u.role = 'staff'
+          ORDER BY n.createdAt DESC 
+          LIMIT 20
+        `;
+        
+        console.log('[DEBUG] スタッフ通知取得完了:', staffNotifications.length, '件');
+        notifications = staffNotifications.map((n: any) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title,
+          message: n.message,
+          timestamp: n.createdAt instanceof Date ? n.createdAt.toISOString() : new Date(n.createdAt).toISOString(),
+          read: n.read,
+          action: n.action,
+          priority: n.priority,
+          notificationType: n.notificationType
+        }));
+      } catch (error) {
+        console.error('スタッフ通知取得エラー:', error);
+      }
+    } else if (userId) {
+      try {
+        const dynamicResponse = await fetch(`${request.nextUrl.origin}/api/notifications/dynamic?role=${role}`, {
+          headers: {
+            'Authorization': request.headers.get('Authorization') || '',
+            'Cookie': request.headers.get('Cookie') || ''
+          }
+        });
+        
+        if (dynamicResponse.ok) {
+          notifications = await dynamicResponse.json();
+        }
+      } catch (error) {
+        console.error('通知取得エラー:', error);
+      }
+    }
+    
+    // セラーの場合、通知設定でフィルタリング
+    if (role === 'seller' && userSettings) {
+      notifications = notifications.filter(notification => {
+        // notificationTypeがない通知は常に表示
+        if (!notification.notificationType) return true;
+        
+        // 設定に応じてフィルタリング
+        return userSettings[notification.notificationType] === true;
+      });
+      
+      console.log(`通知フィルタリング: ${notifications.length}件表示（設定適用済み）`);
+    }
+    
+    // タイムスタンプでソート（新しい順）
+    const sortedNotifications = [...notifications].sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    
+    // 最新20件に制限
+    const limitedNotifications = sortedNotifications.slice(0, 20);
+    
+    console.log('[DEBUG] 通知API完了:', limitedNotifications.length, '件返却');
+    return NextResponse.json(limitedNotifications);
+
+  } catch (error) {
+    console.error('通知取得エラー:', error);
+    console.error('エラースタック:', error.stack);
+    // エラー時は空配列を返す
+    return NextResponse.json([]);
+  }
 }
 
 // 通知を既読にする
 export async function PUT(request: NextRequest) {
-  const { notificationId } = await request.json();
-  
-  // 実際の実装では、データベースで通知のステータスを更新
-  console.log(`Marking notification ${notificationId} as read`);
-  
-  return NextResponse.json({ success: true });
+  try {
+    const { notificationId } = await request.json();
+    
+    if (!notificationId) {
+      return NextResponse.json({ error: 'notificationId is required' }, { status: 400 });
+    }
+    
+    // データベースで通知のステータスを更新
+    await prisma.$executeRaw`
+      UPDATE notifications 
+      SET "read" = true, updatedAt = datetime('now')
+      WHERE id = ${notificationId}
+    `;
+    
+    console.log(`Marking notification ${notificationId} as read`);
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('既読更新エラー:', error);
+    return NextResponse.json({ error: 'Failed to mark as read' }, { status: 500 });
+  }
 }
 
 // 全ての通知を既読にする
 export async function POST(request: NextRequest) {
-  const { action, role, userId, notification } = await request.json();
+  const { action, role, userId, notification, notificationId } = await request.json();
+  
+  if (action === 'mark-read' && notificationId) {
+    try {
+      // 単一の通知を既読にマーク
+      console.log(`📧 通知を既読にマーク: ${notificationId}`);
+      
+      // データベースで通知の既読状況を更新
+      await prisma.$executeRaw`
+        UPDATE notifications 
+        SET "read" = true, updatedAt = datetime('now')
+        WHERE id = ${notificationId}
+      `;
+      
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error('既読更新エラー:', error);
+      return NextResponse.json({ error: 'Failed to mark as read' }, { status: 500 });
+    }
+  }
   
   if (action === 'mark-all-read') {
-    // 実際の実装では、データベースで全通知を既読に更新
-    console.log(`Marking all notifications as read for ${role}`);
-    return NextResponse.json({ success: true });
+    try {
+      // 全ての通知を既読にマーク
+      console.log(`📧 全通知を既読にマーク for ${role}`);
+      
+      // 現在のユーザーまたはロールに応じて全通知を既読にする
+      if (userId) {
+        await prisma.$executeRaw`
+          UPDATE notifications 
+          SET "read" = true, updatedAt = datetime('now')
+          WHERE userId = ${userId}
+        `;
+      } else if (role === 'staff') {
+        await prisma.$executeRaw`
+          UPDATE notifications n
+          SET "read" = true, updatedAt = datetime('now')
+          FROM users u 
+          WHERE n.userId = u.id AND u.role = 'staff'
+        `;
+      }
+      
+      return NextResponse.json({ success: true });
+    } catch (error) {
+      console.error('全既読更新エラー:', error);
+      return NextResponse.json({ error: 'Failed to mark all as read' }, { status: 500 });
+    }
   }
   
   // 新しい通知を作成

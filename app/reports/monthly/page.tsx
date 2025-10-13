@@ -332,7 +332,7 @@ export default function MonthlyReportsPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">カテゴリー</th>
+                  <th className="text-center py-3 px-4 font-semibold text-gray-700">カテゴリー</th>
                   <th className="text-right py-3 px-4 font-semibold text-gray-700">売上高</th>
                   <th className="text-right py-3 px-4 font-semibold text-gray-700">販売数</th>
                   <th className="text-right py-3 px-4 font-semibold text-gray-700">平均単価</th>

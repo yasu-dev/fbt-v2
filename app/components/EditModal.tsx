@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useToast } from '@/app/components/features/notifications/ToastProvider';
 import { BaseModal, NexusButton, NexusInput, NexusSelect, NexusTextarea, NexusLoadingSpinner } from './ui';
 
@@ -13,9 +13,39 @@ interface EditModalProps {
 }
 
 export default function EditModal({ isOpen, onClose, type, title, data }: EditModalProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [formData, setFormData] = useState(data);
   const [isLoading, setIsLoading] = useState(false);
   const { showToast } = useToast();
+  const [staffOptions, setStaffOptions] = useState<{ value: string; label: string }[]>([
+    { value: '', label: '選択してください' }
+  ]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadStaff = async () => {
+      try {
+        const res = await fetch('/api/user/staff', { credentials: 'include' });
+        if (!mounted || !res.ok) return;
+        const data = await res.json();
+        if (data?.success && Array.isArray(data.staff)) {
+          setStaffOptions([
+            { value: '', label: '選択してください' },
+            ...data.staff.map((s: any) => ({ value: s.id, label: s.name }))
+          ]);
+        }
+      } catch {}
+    };
+    loadStaff();
+    return () => { mounted = false; };
+  }, []);
+
+  // スクロール位置のリセット
+  useEffect(() => {
+    if (isOpen && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -195,20 +225,14 @@ export default function EditModal({ isOpen, onClose, type, title, data }: EditMo
             { value: "inspection", label: "検品" },
             { value: "shipping", label: "出荷" },
             { value: "returns", label: "返品処理" },
-            { value: "maintenance", label: "メンテナンス" }
+
           ]}
         />
         <NexusSelect
           label="担当者"
           value={formData.assignee || ''}
           onChange={(e) => handleInputChange('assignee', e.target.value)}
-          options={[
-            { value: "", label: "選択してください" },
-            { value: "田中", label: "田中" },
-            { value: "佐藤", label: "佐藤" },
-            { value: "山田", label: "山田" },
-            { value: "鈴木", label: "鈴木" }
-          ]}
+          options={staffOptions}
         />
         <NexusInput
           label="期限"
@@ -216,18 +240,7 @@ export default function EditModal({ isOpen, onClose, type, title, data }: EditMo
           value={formData.dueDate || ''}
           onChange={(e) => handleInputChange('dueDate', e.target.value)}
         />
-        <NexusSelect
-          label="優先度"
-          value={formData.priority || ''}
-          onChange={(e) => handleInputChange('priority', e.target.value)}
-          options={[
-            { value: "", label: "選択してください" },
-            { value: "low", label: "低" },
-            { value: "medium", label: "中" },
-            { value: "high", label: "高" },
-            { value: "urgent", label: "緊急" }
-          ]}
-        />
+
         <NexusSelect
           label="ステータス"
           value={formData.status || ''}
@@ -273,7 +286,7 @@ export default function EditModal({ isOpen, onClose, type, title, data }: EditMo
       size="xl"
     >
       <form id="edit-form" onSubmit={handleSubmit} className="flex flex-col h-full">
-        <div className="flex-1 overflow-y-auto p-6">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6">
           {renderForm()}
         </div>
 

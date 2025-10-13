@@ -15,6 +15,10 @@ interface ToastContextType {
   hideToast: (id: string) => void;
 }
 
+interface ToastProviderProps {
+  children: ReactNode;
+}
+
 const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export function useToast() {
@@ -25,14 +29,22 @@ export function useToast() {
   return context;
 }
 
-interface ToastProviderProps {
-  children: ReactNode;
-}
+// メッセージを簡潔にする関数
+const truncateMessage = (message: string, maxLength: number = 80) => {
+  if (message.length <= maxLength) return message;
+  return message.substring(0, maxLength) + '...';
+};
 
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<(Toast & { timeoutId?: NodeJS.Timeout })[]>([]);
 
   const showToast = useCallback((toast: Omit<Toast, 'id'>) => {
+    // 無効なトーストデータをフィルタリング
+    if (!toast.title || toast.title.trim() === '') {
+      console.warn('Toast warning: Empty or invalid title provided');
+      return;
+    }
+    
     const id = Math.random().toString(36).substring(2, 9);
     const duration = toast.duration || 5000;
     
@@ -85,11 +97,11 @@ export function ToastProvider({ children }: ToastProviderProps) {
 
   const getToastColors = (type: string) => {
     switch (type) {
-      case 'success': return 'bg-green-50 border-green-200 text-green-800';
-      case 'error': return 'bg-red-50 border-red-200 text-red-800';
-      case 'warning': return 'bg-yellow-50 border-yellow-200 text-yellow-800';
-      case 'info': return 'bg-blue-50 border-blue-200 text-blue-800';
-      default: return 'bg-gray-50 border-gray-200 text-gray-800';
+      case 'success': return 'bg-green-500 border-green-600';
+      case 'error': return 'bg-red-500 border-red-600';
+      case 'warning': return 'bg-yellow-500 border-yellow-600';
+      case 'info': return 'bg-blue-500 border-blue-600';
+      default: return 'bg-gray-500 border-gray-600';
     }
   };
 
@@ -97,30 +109,42 @@ export function ToastProvider({ children }: ToastProviderProps) {
     <ToastContext.Provider value={{ showToast, hideToast }}>
       {children}
       
-      <div className="fixed top-4 right-4 z-50 space-y-2">
+      {/* トーストコンテナ - ヘッダーの下に配置 */}
+      <div 
+        className="fixed top-16 right-4 z-50 space-y-2 max-w-sm w-full"
+        style={{
+          writingMode: 'horizontal-tb', // 横書きを明示的に指定
+          direction: 'ltr' // 左から右へのテキスト方向を指定
+        }}
+      >
         {toasts.map((toast) => (
           <div
             key={toast.id}
             className={`
-              max-w-sm w-full p-4 rounded-lg border shadow-lg transform transition-all duration-300 ease-in-out
+              p-4 rounded-lg border shadow-lg transform transition-all duration-300 ease-in-out
               ${getToastColors(toast.type)}
               animate-[slideInRight_0.3s_ease-out]
             `}
+            style={{
+              writingMode: 'horizontal-tb', // 各トーストアイテムも横書きを明示的に指定
+              direction: 'ltr'
+            }}
+            data-testid="toast"
           >
-            <div className="flex items-start">
+            <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
                 {getToastIcon(toast.type)}
               </div>
-              <div className="ml-3 w-0 flex-1">
-                <p className="text-sm font-medium">{toast.title}</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white">{toast.title}</p>
                 {toast.message && (
-                  <p className="mt-1 text-sm opacity-90">{toast.message}</p>
+                  <p className="mt-1 text-sm text-white/90">{truncateMessage(toast.message)}</p>
                 )}
               </div>
-              <div className="ml-4 flex-shrink-0 flex">
+              <div className="flex-shrink-0">
                 <button
                   onClick={() => hideToast(toast.id)}
-                  className="inline-flex text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="inline-flex text-white/80 hover:text-white focus:outline-none"
                 >
                   <span className="sr-only">閉じる</span>
                   <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

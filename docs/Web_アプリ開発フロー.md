@@ -1,17 +1,17 @@
 # Next.js フルスタックアプリ開発フロー
 
-**最終更新日**: 2025年1月13日
+**最終更新日**: 2025年10月3日
 
 本プロジェクトは Next.js 14 App Router を使用したフルスタックアプリケーションとして開発されています。
 
 ## 開発アーキテクチャ
 
 - **フレームワーク**: Next.js 14.2.5 (App Router)
-- **言語**: TypeScript 5.3.3
-- **データベース**: Prisma + SQLite (開発) / PostgreSQL (本番)
-- **認証**: カスタムJWT認証 + 2要素認証
-- **スタイリング**: Tailwind CSS 3.4.1 + カスタムNexusデザインシステム
-- **テスト**: Playwright (E2E) + Jest (ユニット)
+- **言語**: TypeScript 5
+- **データベース**: Prisma 5.7.0 + SQLite (開発)
+- **認証**: カスタムJWT認証 + 2要素認証（メールベース）
+- **スタイリング**: Tailwind CSS 3.4.1
+- **テスト**: Playwright 1.54.2 (E2E) + Jest 29.7.0 (ユニット)
 
 ## 開発フロー
 
@@ -197,17 +197,31 @@ npm run start  # ビルド結果の動作確認
 ```
 .
 ├── app/
-│   ├── (pages)/           # ページコンポーネント
-│   ├── api/               # API Routes
+│   ├── api/               # API Routes (40エンドポイント)
+│   ├── billing/           # 請求管理
+│   ├── dashboard/         # ダッシュボード
+│   ├── delivery/          # 配送管理
+│   ├── delivery-plan/     # 納品プラン
+│   ├── inventory/         # 在庫管理
+│   ├── login/             # ログイン
+│   ├── profile/           # プロフィール
+│   ├── reports/           # レポート
+│   ├── returns/           # 返品管理
+│   ├── sales/             # 販売管理
+│   ├── settings/          # 設定
+│   ├── staff/             # スタッフ用ページ
 │   ├── components/        # 共通コンポーネント
 │   └── globals.css        # グローバルスタイル
+├── components/            # 旧コンポーネント（移行中）
 ├── lib/
 │   ├── hooks/             # カスタムフック
 │   ├── repositories/      # データアクセス層
 │   ├── services/          # ビジネスロジック層
-│   └── utils/             # ユーティリティ
+│   ├── utils/             # ユーティリティ
+│   ├── constants/         # 定数
+│   └── templates/         # テンプレート
 ├── prisma/                # データベーススキーマ
-├── e2e/                   # E2Eテスト
+├── public/                # 静的ファイル
 └── docs/                  # プロジェクトドキュメント
 ```
 

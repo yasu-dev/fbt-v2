@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from '@/app/components/features/notifications/ToastProvider';
 import { ModalProvider } from '@/app/components/ui/ModalContext';
+import AlertProvider from '@/app/components/ui/AlertProvider';
 
 // データベース初期化は無効化（テスト用）
 // if (typeof window === 'undefined' && process.env.SKIP_DB !== '1') {
@@ -16,13 +17,18 @@ export const metadata: Metadata = {
   title: "THE WORLD DOOR - フルフィルメントサービス",
   description: "世界最先端のAI駆動型在庫管理・輸出支援システム。",
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.svg', type: 'image/svg+xml' }
+    ],
+    shortcut: '/favicon.ico',
     apple: '/icon.svg',
-    other: {
-      rel: 'icon',
-      url: '/icon.svg',
-    },
+    other: [
+      {
+        rel: 'icon',
+        url: '/icon.svg',
+      },
+    ],
   },
 };
 
@@ -55,11 +61,35 @@ export default function RootLayout({
         />
       </head>
       <body suppressHydrationWarning>
-        <ModalProvider>
-          <ToastProvider>
-            {children}
-          </ToastProvider>
-        </ModalProvider>
+        <AlertProvider>
+          <ModalProvider>
+            <ToastProvider>
+              {children}
+            </ToastProvider>
+          </ModalProvider>
+        </AlertProvider>
+        
+        {/* Chrome拡張機能エラーハンドリング */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined') {
+                window.addEventListener('unhandledrejection', function(event) {
+                  if (event.reason instanceof Error) {
+                    const error = event.reason;
+                    if (error.message.includes('message port closed') || 
+                        error.message.includes('Extension context invalidated') ||
+                        (error.stack && error.stack.includes('content.js')) ||
+                        (error.stack && error.stack.includes('chrome-extension://'))) {
+                      event.preventDefault();
+                      return;
+                    }
+                  }
+                });
+              }
+            `
+          }}
+        />
       </body>
     </html>
   );

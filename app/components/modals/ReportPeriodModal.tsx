@@ -48,20 +48,18 @@ export default function ReportPeriodModal({ isOpen, onClose, onApply }: ReportPe
         </div>
       </div>
       
-      <div className="flex gap-2">
-        <NexusButton
-          onClick={handleApply}
-          variant="primary"
-          className="flex-1"
-        >
-          適用
-        </NexusButton>
+      <div className="flex justify-end gap-2">
         <NexusButton
           onClick={onClose}
           variant="secondary"
-          className="flex-1"
         >
           キャンセル
+        </NexusButton>
+        <NexusButton
+          onClick={handleApply}
+          variant="primary"
+        >
+          適用
         </NexusButton>
       </div>
     </BaseModal>

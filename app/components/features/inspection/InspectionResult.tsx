@@ -1,7 +1,17 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import NexusCard from '@/app/components/ui/NexusCard';
 import NexusButton from '@/app/components/ui/NexusButton';
+import NexusSelect from '@/app/components/ui/NexusSelect';
+import NexusTextarea from '@/app/components/ui/NexusTextarea';
+import { useToast } from '@/app/components/features/notifications/ToastProvider';
+import { 
+  MapPinIcon, 
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon 
+} from '@heroicons/react/24/outline';
 
 interface Product {
   id: string;
@@ -40,15 +50,25 @@ interface InspectionData {
   inspectionDate: string;
   inspectorId: string;
   result: 'passed' | 'failed' | 'conditional';
+  skipPhotography?: boolean;
 }
 
 export interface InspectionResultProps {
   product: Product;
   inspectionData: InspectionData;
   onNotesChange: (notes: string) => void;
-  onSubmit: () => Promise<void>;
+  onSubmit: (locationId?: string) => Promise<void>;
   onPrev: () => void;
   loading: boolean;
+}
+
+interface Location {
+  id: string;
+  code: string;
+  name: string;
+  zone: string;
+  capacity?: number;
+  _count?: { products: number };
 }
 
 export default function InspectionResult({
@@ -59,6 +79,76 @@ export default function InspectionResult({
   onPrev,
   loading,
 }: InspectionResultProps) {
+  const { showToast } = useToast();
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>('');
+  const [loadingLocations, setLoadingLocations] = useState(true);
+
+  // ロケーションデータを取得
+  useEffect(() => {
+    const fetchLocations = async () => {
+      try {
+        const response = await fetch('/api/locations');
+        if (response.ok) {
+          const data = await response.json();
+          setLocations(data);
+        } else {
+          console.error('Failed to fetch locations');
+          showToast({
+            type: 'warning',
+            title: 'ロケーション取得エラー',
+            message: 'ロケーション情報の取得に失敗しました'
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching locations:', error);
+        showToast({
+          type: 'error',
+          title: 'ロケーション取得エラー',
+          message: 'ロケーション情報の取得中にエラーが発生しました'
+        });
+      } finally {
+        setLoadingLocations(false);
+      }
+    };
+
+    fetchLocations();
+  }, [showToast]);
+
+  // カテゴリに基づく推奨ロケーション
+  const getRecommendedLocation = () => {
+    if (product.category === 'camera_body' || product.category === 'lens') {
+      return locations.find(loc => loc.zone === 'H') || null; // 防湿庫
+    } else if (product.category === 'watch') {
+      return locations.find(loc => loc.zone === 'V') || null; // 金庫室
+    }
+    return locations.find(loc => loc.zone === 'A') || null; // 標準棚
+  };
+
+  const recommendedLocation = getRecommendedLocation();
+
+  // 保管場所選択時の自動設定
+  useEffect(() => {
+    if (recommendedLocation && !selectedLocation) {
+      setSelectedLocation(recommendedLocation.id);
+    }
+  }, [recommendedLocation, selectedLocation]);
+
+  // 完了ボタンハンドラー
+  const handleSubmit = async () => {
+    if (!selectedLocation) {
+      showToast({
+        type: 'warning',
+        title: '保管場所未選択',
+        message: '商品の保管場所を選択してください'
+      });
+      return;
+    }
+    await onSubmit(selectedLocation);
+  };
+
+
+
   // チェック項目の集計
   const getChecklistSummary = () => {
     const allChecks = Object.values(inspectionData.checklist).flatMap(category =>
@@ -80,11 +170,11 @@ export default function InspectionResult({
   // 検品結果の判定
   const getResultStatus = () => {
     if (summary.percentage >= 90) {
-      return { label: 'A級品', color: 'text-green-600', bg: 'bg-green-100' };
+      return { label: 'A級品', color: 'status-badge success' };
     } else if (summary.percentage >= 70) {
-      return { label: 'B級品', color: 'text-yellow-600', bg: 'bg-yellow-100' };
+      return { label: 'B級品', color: 'status-badge warning' };
     } else {
-      return { label: 'C級品', color: 'text-red-600', bg: 'bg-red-100' };
+      return { label: 'C級品', color: 'status-badge error' };
     }
   };
 
@@ -189,6 +279,96 @@ export default function InspectionResult({
         </div>
       </NexusCard>
 
+      {/* 保管場所選択セクション */}
+      <NexusCard className="p-6 border-2 border-green-200">
+        <div className="flex items-center gap-3 mb-4">
+          <MapPinIcon className="w-6 h-6 text-green-600" />
+          <h4 className="text-lg font-semibold text-gray-900">保管場所の設定</h4>
+        </div>
+        
+        <div className="space-y-4">
+          {/* 推奨ロケーション表示 */}
+          {recommendedLocation && (
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <div className="flex items-start gap-3">
+                <InformationCircleIcon className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h5 className="font-medium text-blue-900 mb-1">推奨保管場所</h5>
+                  <p className="text-sm text-blue-800">
+                    {product.category === 'camera_body' || product.category === 'lens' 
+                      ? 'カメラ・レンズは湿度管理が重要なため、防湿庫での保管を推奨します。'
+                      : product.category === 'watch'
+                      ? '高価値商品のため、セキュリティの高い金庫室での保管を推奨します。'
+                      : '標準的な棚での保管が適しています。'
+                    }
+                  </p>
+                  <p className="text-sm font-medium text-blue-900 mt-1">
+                    推奨: {recommendedLocation.name} ({recommendedLocation.code})
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ロケーション選択 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              保管場所 <span className="text-red-500">*</span>
+            </label>
+            
+            {loadingLocations ? (
+              <div className="flex items-center justify-center p-4 border border-gray-200 rounded-lg">
+                <div className="animate-spin h-5 w-5 border-b-2 border-blue-500 rounded-full"></div>
+                <span className="ml-2 text-gray-600">ロケーション情報を取得中...</span>
+              </div>
+            ) : (
+              <NexusSelect
+                value={selectedLocation}
+                onChange={(e) => setSelectedLocation(e.target.value)}
+                className="w-full"
+                required
+              >
+                <option value="">保管場所を選択してください</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name} ({location.code}) 
+                    {location._count && ` - ${location._count.products}個保管中`}
+                    {location.capacity && ` / 容量${location.capacity}`}
+                  </option>
+                ))}
+              </NexusSelect>
+            )}
+          </div>
+
+          {/* 選択されたロケーションの詳細表示 */}
+          {selectedLocation && (
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              {(() => {
+                const selected = locations.find(loc => loc.id === selectedLocation);
+                if (!selected) return null;
+                
+                return (
+                  <div className="flex items-center gap-3">
+                    <CheckCircleIcon className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    <div>
+                      <p className="font-medium text-green-900">
+                        選択中: {selected.name}
+                      </p>
+                      <p className="text-sm text-green-800">
+                        ゾーン: {selected.zone} | コード: {selected.code}
+                        {selected._count && selected.capacity && (
+                          ` | 使用率: ${Math.round((selected._count.products / selected.capacity) * 100)}%`
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      </NexusCard>
+
       {/* チェックリスト詳細 */}
       <NexusCard className="p-6">
         <h4 className="text-lg font-semibold mb-4">チェックリスト詳細</h4>
@@ -247,15 +427,15 @@ export default function InspectionResult({
         </div>
       </NexusCard>
 
-      {/* 備考欄 */}
+      {/* 検品メモ */}
       <NexusCard className="p-6">
-        <h4 className="text-lg font-semibold mb-4">備考・特記事項</h4>
-        <textarea
+        <h4 className="text-lg font-semibold mb-4">検品メモ</h4>
+        <NexusTextarea
           value={inspectionData.notes}
           onChange={(e) => onNotesChange(e.target.value)}
+          placeholder="検品時の気になる点や特記事項があれば記載してください"
           rows={4}
-          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="傷の詳細、特記事項、注意点などを記入してください..."
+          className="w-full"
         />
       </NexusCard>
 
@@ -279,7 +459,7 @@ export default function InspectionResult({
       </div>
 
       {/* アクションボタン */}
-      <div className="flex justify-between pt-4">
+      <div className="flex justify-between gap-4">
         <NexusButton
           onClick={onPrev}
           variant="secondary"
@@ -288,21 +468,15 @@ export default function InspectionResult({
         >
           戻る
         </NexusButton>
+        
         <NexusButton
-          onClick={onSubmit}
+          onClick={handleSubmit}
           variant="primary"
           size="lg"
-          disabled={loading}
-          className="min-w-[200px]"
+          disabled={loading || !selectedLocation}
+          className="min-w-[180px] text-center justify-center px-6"
         >
-          {loading ? (
-            <span className="flex items-center">
-              <span className="animate-spin h-5 w-5 mr-3 border-b-2 border-white rounded-full"></span>
-              送信中...
-            </span>
-          ) : (
-            '検品結果を送信'
-          )}
+          {loading ? '処理中...' : '次へ（検品完了）'}
         </NexusButton>
       </div>
     </div>

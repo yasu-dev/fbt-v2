@@ -1,14 +1,8 @@
-# fbt-v2 AWS移行戦略 - 段階的実装版
+# 「Fulfillment by THE WORLD DOOR」AWS段階的実装計画
 
 **作成日**: 2025年10月23日
-**分析者**: Claude (Sonnet 4.5)
-**対象**: The World Door - Fulfillment Business Terminal v2
 
 ---
-
-## 📋 エグゼクティブサマリー
-
-本提案は、fbt-v2プロジェクトの**現実的なグロース戦略**に基づいた段階的AWS移行計画です。
 
 ### 核心的方針
 

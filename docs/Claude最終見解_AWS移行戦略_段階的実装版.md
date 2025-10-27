@@ -9,6 +9,7 @@
 1. **フェーズ1（MVP）**: 最小構成でローンチ、運用を学ぶ
 2. **フェーズ2（スケール）**: 性能を強化、運用を安定化
 3. **フェーズ3（エンタープライズ）**: セキュリティ・コンプライアンスを完備
+4. **Redis不要**: Socket.io未実装のためフェーズ1ではRedis省略
 
 ### 重要な前提
 
@@ -16,6 +17,7 @@
 - **データベース**: MySQL（担当エンジニアの習熟度を優先）
 - **段階的拡張**: 最初から全部盛りせず、必要に応じて機能追加
 - **コスト最適化**: 各フェーズで必要最小限のリソースで開始
+- **状態監視**: ポーリング方式（30秒間隔）でフェーズ1実装
 
 ---
 
@@ -38,26 +40,28 @@ Internet
   ↓
 [Route 53] 独自ドメイン管理
   ↓
-[ALB] Single-AZ ← コスト削減のため単一AZ
+[ALB] Multi-AZ ← 可用性優先
   ↓
 [ECS Fargate Cluster]
-  ├─ タスク数: 1タスク固定（オートスケールなし）
+  ├─ タスク数: 2タスク（Multi-AZ配置）
   ├─ スペック: 0.25vCPU, 0.5GB
+  ├─ ポーリング方式: 30秒間隔
   └─ デプロイ: ローリングアップデート
-  ↓          ↓
-[RDS Proxy] [ElastiCache Redis] ← 必須（Socket.io対応）
-  ↓          ├─ cache.t4g.micro × 1（Single-AZ）
-  ↓          └─ セッション + Socket.io Adapter
   ↓
-[Aurora Serverless v2]
+[RDS Proxy]
+  ↓
+[Aurora Serverless v2 (MySQL)]
   ├─ 0.5 ACU固定（スケーリング無効）
-  ├─ Single-AZ（Multi-AZ無効）
-  └─ バックアップ保持: 1日
+  ├─ Multi-AZ（可用性向上）
+  └─ バックアップ保持: 7日
 
 [S3]
   ├─ バケット: 1個（画像/PDF/動画）
   ├─ CDN: なし（直接アクセス）
   └─ ライフサイクル: 90日後Glacier移行
+
+セッション管理:
+└─ JWT（ステートレス、Redis不要）
 
 横断サービス:
 ├─ Secrets Manager（DB認証のみ）
@@ -69,53 +73,58 @@ Internet
 
 | 層 | サービス | 仕様 | 判断理由 |
 |---|---|---|---|
-| **DNS** | Route 53 | 1ホストゾーン | 標準 |
+| **DNS** | Route 53 | 1ホストゾーン | ✅ 標準 |
 | **CDN/WAF** | なし | - | ❌ コスト削減（S3直接アクセス） |
-| **LB** | ALB | Single-AZ | ⚠️ Multi-AZは後で追加 |
-| **Compute** | ECS Fargate | 1タスク, 0.25vCPU/0.5GB | ✅ 最小構成 |
+| **LB** | ALB | Multi-AZ | ✅ 可用性優先 |
+| **Compute** | ECS Fargate | 2タスク, 0.25vCPU/0.5GB | ✅ Multi-AZ配置 |
 | **Container** | ECR | 1リポジトリ | ✅ 標準 |
-| **Database** | Aurora Serverless v2 | 0.5 ACU固定, Single-AZ | ⚠️ Multi-AZは後で追加 |
+| **Database** | Aurora Serverless v2 (MySQL) | 0.5 ACU固定, Multi-AZ | ✅ 可用性優先 |
 | **DB Proxy** | RDS Proxy | 1エンドポイント | ✅ 必須（接続プーリング） |
-| **Cache** | ElastiCache Redis | cache.t4g.micro × 1 | ✅ 必須（Socket.io） |
+| **Cache** | なし | - | ❌ フェーズ1不要 |
 | **Storage** | S3 | 1バケット, CDNなし | ✅ 標準 |
 | **Secrets** | Secrets Manager | 2シークレット（DB/JWT） | ✅ 必須 |
 | **Monitoring** | CloudWatch Logs | 7日保持 | ✅ 最低限 |
-| **Backup** | Aurora自動バックアップ | 1日保持 | ✅ 最低限 |
+| **Backup** | Aurora自動バックアップ | 7日保持 | ✅ Multi-AZ対応 |
 | **IaC** | AWS CDK (TypeScript) | - | ✅ 標準 |
 
 ### コスト試算（フェーズ1）
 
 | サービス | 仕様 | 月額（USD） | 月額（JPY）* |
 |---------|-----|-----------|------------|
-| **ECS Fargate** | 0.25vCPU, 0.5GB × 1 × 730h | $18 | ¥2,700 |
-| **ALB** | 1個（Single-AZ）、LCU 5/h | $18 | ¥2,700 |
-| **Aurora Serverless v2** | 0.5 ACU × 730h | $44 | ¥6,600 |
+| **ECS Fargate** | 0.25vCPU, 0.5GB × 2タスク × 730h | $18 | ¥2,700 |
+| **ALB** | 1個（Multi-AZ）、LCU 5/h | $25 | ¥3,750 |
+| **Aurora Serverless v2 (MySQL)** | 0.5 ACU × 730h, Multi-AZ | $88 | ¥13,200 |
 | **RDS Proxy** | 1エンドポイント × 730h | $11 | ¥1,650 |
-| **ElastiCache Redis** | cache.t4g.micro × 1 | $10 | ¥1,500 |
+| **ElastiCache Redis** | フェーズ1不要 | $0 | ¥0 |
 | **S3** | 20GB + 転送10GB | $2 | ¥300 |
 | **ECR** | 5GB | $0.5 | ¥75 |
 | **Route 53** | 1ホストゾーン + 10万クエリ | $1 | ¥150 |
 | **Secrets Manager** | 2シークレット | $0.8 | ¥120 |
 | **CloudWatch Logs** | 2GB（7日保持） | $1 | ¥150 |
 | **データ転送** | NAT Gateway 10GB | $1 | ¥150 |
-| **合計** | | **$107** | **¥16,095** |
+| **合計** | | **$147.5** | **¥22,125** |
 
 *1 USD = 150 JPYで換算
 
-### フェーズ1の重要な削減ポイント
+### フェーズ1の重要なポイント
 
-1. **Multi-AZ無効**: Single-AZで運用（ダウンタイム許容）
+**コスト削減:**
+1. **Redis不要**: Socket.io未実装（-¥1,500）
 2. **CDN無し**: CloudFront不使用（S3直接アクセス）
-3. **オートスケール無し**: 固定1タスク
+3. **オートスケール無し**: 固定2タスク
 4. **監視最小限**: CloudWatch Logsのみ（X-Ray/Sentryなし）
-5. **バックアップ最小限**: 1日保持
+
+**可用性優先:**
+1. **Multi-AZ有効**: Aurora + ALB（+¥7,950）
+2. **2タスク配置**: 可用性向上
+3. **バックアップ7日**: PITR対応
 
 ### フェーズ1で削除しないもの（必須コンポーネント）
 
 1. **RDS Proxy**: 接続数管理に必須
-2. **ElastiCache Redis**: Socket.io Adapterに必須
-3. **Aurora Serverless v2**: Prisma互換性に必須
-4. **ECS Fargate**: カスタムサーバー起動に必須
+2. ~~**ElastiCache Redis**~~: フェーズ1不要（Socket.io未実装）
+3. **Aurora Serverless v2 (MySQL)**: Prisma互換性に必須
+4. **ECS Fargate**: 柔軟性・拡張性に必須
 
 ---
 
@@ -165,24 +174,24 @@ DAU: 30-40人
 
 | サービス | フェーズ1 | フェーズ2 | 変更理由 |
 |---------|----------|----------|---------|
-| **ALB** | Single-AZ | Multi-AZ | 可用性向上 |
-| **ECS Fargate** | 1タスク固定 | 2-6タスク（オートスケール） | 性能向上 |
+| **ALB** | Multi-AZ | Multi-AZ | 変更なし |
+| **ECS Fargate** | 2タスク固定 | 2-6タスク（オートスケール） | 性能向上 |
 | **ECS スペック** | 0.25vCPU/0.5GB | 0.5vCPU/1GB | 処理能力向上 |
-| **Aurora** | 0.5 ACU固定, Single-AZ | 0.5-2 ACU, Multi-AZ | 性能・可用性向上 |
-| **Redis** | t4g.micro × 1 | t4g.small × 2（Multi-AZ） | 可用性向上 |
+| **Aurora** | 0.5 ACU固定, Multi-AZ | 0.5-2 ACU, Multi-AZ | 性能向上 |
+| **Redis** | なし | Socket.io実装時に追加 | 必要時のみ |
 | **CDN** | なし | CloudFront | 性能向上 |
 | **監視** | Logsのみ | Logs + Alarms + X-Ray | 運用品質向上 |
-| **バックアップ** | 1日保持 | 7日保持 + 週次フル | データ保護強化 |
+| **バックアップ** | 7日保持 | 7日保持 + 週次フル | データ保護強化 |
 
 ### コスト試算（フェーズ2）
 
 | サービス | 仕様 | 月額（USD） | 月額（JPY）* | 差分 |
 |---------|-----|-----------|------------|------|
 | **ECS Fargate** | 0.5vCPU, 1GB × 平均3タスク | $106 | ¥15,900 | +¥13,200 |
-| **ALB** | Multi-AZ、LCU 10/h | $25 | ¥3,750 | +¥1,050 |
-| **Aurora Serverless v2** | 0.5-2 ACU平均1 ACU, Multi-AZ | $88 | ¥13,200 | +¥6,600 |
+| **ALB** | Multi-AZ、LCU 10/h | $25 | ¥3,750 | ±0 |
+| **Aurora Serverless v2 (MySQL)** | 0.5-2 ACU平均1 ACU, Multi-AZ | $88 | ¥13,200 | ±0 |
 | **RDS Proxy** | 2エンドポイント | $22 | ¥3,300 | +¥1,650 |
-| **ElastiCache Redis** | t4g.small × 2（Multi-AZ） | $40 | ¥6,000 | +¥4,500 |
+| **ElastiCache Redis** | なし（Socket.io時追加） | $0 | ¥0 | ±0 |
 | **S3 + 転送** | 50GB + 転送30GB | $5 | ¥750 | +¥450 |
 | **CloudFront** | 100GB転送 + 100万リクエスト | $10 | ¥1,500 | +¥1,500 |
 | **ECR** | 10GB | $1 | ¥150 | +¥75 |
@@ -192,7 +201,7 @@ DAU: 30-40人
 | **X-Ray** | 5万トレース | $0.25 | ¥38 | +¥38 |
 | **AWS Backup** | 30GB × $0.05 | $1.5 | ¥225 | +¥75 |
 | **データ転送** | NAT Gateway 30GB | $2 | ¥300 | +¥150 |
-| **合計** | | **$339** | **¥50,850** | **+¥34,755** |
+| **合計** | | **$299** | **¥44,850** | **+¥22,725** |
 
 *1 USD = 150 JPYで換算
 
@@ -205,13 +214,13 @@ DAU: 30-40人
 3. **レスポンス悪化**: P95レスポンスタイムが3秒超過
 4. **CPU使用率**: 平均70%以上を3日間継続
 5. **ダウンタイム発生**: 月1回以上のサービス停止
+6. **リアルタイム通知需要**: ポーリングでは不足する要件が発生
 
 ### フェーズ2で実施する作業
 
-1. **Multi-AZ化** (所要時間: 2時間)
-   - Aurora Multi-AZ有効化（1時間メンテナンス）
-   - Redis Multi-AZ構成変更
-   - ALB Multi-AZ対応
+1. **リアルタイム通知検討** (所要時間: 1日)
+   - Socket.io実装判断
+   - Redis追加検討（必要時のみ）
 
 2. **オートスケール設定** (所要時間: 4時間)
    - ECS Service Auto Scaling設定
@@ -228,7 +237,7 @@ DAU: 30-40人
    - CloudWatch Dashboards作成
    - アラート通知設定
 
-**合計移行時間: 約11時間（1-2日間）**
+**合計移行時間: 約10時間（1-2日間）**
 
 ---
 
@@ -305,7 +314,7 @@ Internet
 | **Aurora** | 0.5-2 ACU | 1-4 ACU | 性能向上 |
 | **Aurora暗号化** | なし | KMS暗号化 | セキュリティ |
 | **バックアップ** | 7日保持 | 30日保持 + 月次 | コンプライアンス |
-| **Redis** | t4g.small | t4g.medium | 性能向上 |
+| **Redis** | なし | Socket.io時にt4g.medium追加 | 必要時のみ |
 | **S3** | 標準 | バージョニング + 暗号化 | データ保護 |
 | **監査** | なし | Config + CloudTrail | コンプライアンス |
 | **脅威検知** | なし | GuardDuty | セキュリティ |
@@ -317,9 +326,9 @@ Internet
 |---------|-----|-----------|------------|------|
 | **ECS Fargate** | 1vCPU, 2GB × 平均6タスク | $284 | ¥42,600 | +¥26,700 |
 | **ALB** | Multi-AZ、LCU 15/h、ログ有効 | $30 | ¥4,500 | +¥750 |
-| **Aurora Serverless v2** | 1-4 ACU平均2 ACU, Multi-AZ, 暗号化 | $176 | ¥26,400 | +¥13,200 |
+| **Aurora Serverless v2 (MySQL)** | 1-4 ACU平均2 ACU, Multi-AZ, 暗号化 | $176 | ¥26,400 | +¥13,200 |
 | **RDS Proxy** | 2エンドポイント | $22 | ¥3,300 | ±0 |
-| **ElastiCache Redis** | t4g.medium × 2（Multi-AZ, 暗号化） | $80 | ¥12,000 | +¥6,000 |
+| **ElastiCache Redis** | Socket.io時にt4g.medium × 2追加 | $0-80 | ¥0-12,000 | +¥0-12,000 |
 | **S3 + 転送** | 100GB + 転送50GB | $7 | ¥1,050 | +¥300 |
 | **CloudFront** | 500GB転送 + 500万リクエスト | $46 | ¥6,900 | +¥5,400 |
 | **AWS WAF** | 1 Web ACL + 10ルール | $11 | ¥1,650 | +¥1,650 |
@@ -336,7 +345,8 @@ Internet
 | **VPC Flow Logs** | 20GB/月 | $1 | ¥150 | +¥150 |
 | **Sentry** | 50K events/月（外部SaaS） | $26 | ¥3,900 | +¥3,900 |
 | **データ転送** | NAT Gateway 50GB | $2.25 | ¥338 | +¥38 |
-| **合計** | | **$759** | **¥113,850** | **+¥63,000** |
+| **合計（Redis無し）** | | **$679** | **¥101,850** | **+¥57,000** |
+| **合計（Redis追加時）** | | **$759** | **¥113,850** | **+¥69,000** |
 
 *1 USD = 150 JPYで換算
 
@@ -385,33 +395,38 @@ Internet
 
 | コンポーネント | フェーズ1 | フェーズ2 | フェーズ3 |
 |------------|----------|----------|----------|
-| **ECS タスク数** | 1固定 | 2-6（オートスケール） | 4-10（オートスケール） |
+| **ECS タスク数** | 2固定 | 2-6（オートスケール） | 4-10（オートスケール） |
 | **ECS スペック** | 0.25vCPU/0.5GB | 0.5vCPU/1GB | 1vCPU/2GB |
 | **Aurora ACU** | 0.5固定 | 0.5-2（オートスケール） | 1-4（オートスケール） |
-| **Aurora AZ** | Single-AZ | Multi-AZ | Multi-AZ + 暗号化 |
-| **Redis** | t4g.micro × 1 | t4g.small × 2 | t4g.medium × 2 + 暗号化 |
+| **Aurora AZ** | Multi-AZ | Multi-AZ | Multi-AZ + 暗号化 |
+| **Redis** | なし | Socket.io時追加 | Socket.io時t4g.medium × 2 |
 | **CDN** | なし | CloudFront | CloudFront + WAF + Shield |
 | **監視** | Logs | Logs + Alarms + X-Ray | 全監視 + Sentry |
 | **セキュリティ** | 最低限 | 標準 | フル対応 |
-| **バックアップ** | 1日 | 7日 | 30日 + 月次 |
+| **バックアップ** | 7日 | 7日 | 30日 + 月次 |
 
 ### コスト比較
 
 | フェーズ | 月額コスト（USD） | 月額コスト（JPY） | セラー数 | 物流件数/日 |
 |---------|----------------|----------------|----------|------------|
-| **フェーズ1** | $107 | ¥16,095 | 10名 | 50件 |
-| **フェーズ2** | $339 | ¥50,850 | 30名 | 150件 |
-| **フェーズ3** | $759 | ¥113,850 | 100名 | 300件 |
+| **フェーズ1** | $147.5 | ¥22,125 | 10名 | 50件 |
+| **フェーズ2** | $299 | ¥44,850 | 30名 | 150件 |
+| **フェーズ3（Redis無）** | $679 | ¥101,850 | 100名 | 300件 |
+| **フェーズ3（Redis有）** | $759 | ¥113,850 | 100名 | 300件 |
 
 ### セラー1人あたりコスト
 
 | フェーズ | セラー1人あたり月額 | 物流1件あたりコスト |
 |---------|----------------|----------------|
-| **フェーズ1** | ¥1,610 | ¥322 |
-| **フェーズ2** | ¥1,695 | ¥339 |
-| **フェーズ3** | ¥1,139 | ¥380 |
+| **フェーズ1** | ¥2,213 | ¥443 |
+| **フェーズ2** | ¥1,495 | ¥299 |
+| **フェーズ3（Redis無）** | ¥1,019 | ¥340 |
+| **フェーズ3（Redis有）** | ¥1,139 | ¥380 |
 
-**重要な洞察**: フェーズ3では規模の経済が働き、セラー1人あたりコストが最も低くなる。
+**重要な洞察**: 
+- フェーズ1はMulti-AZ優先で可用性重視
+- フェーズ3では規模の経済が働き、セラー1人あたりコストが最も低くなる
+- Redis追加はSocket.io実装時のみ
 
 ---
 
@@ -485,28 +500,40 @@ Internet
 
 以下のサービス選定は**全フェーズで変更なし**:
 
-1. **ECS Fargate**: カスタムサーバー（Socket.io）起動に必須
+1. **ECS Fargate**: 柔軟性・拡張性に必須
 2. **Aurora MySQL Serverless v2**: Prisma互換性、自動スケール対応（担当エンジニアのMySQL習熟度を優先）
 3. **RDS Proxy**: 接続プーリングに必須
-4. **ElastiCache Redis**: Socket.io Adapterに必須
 
-これらは技術的制約により**削除・変更不可能**です。
+**条件付き要素:**
+4. **ElastiCache Redis**: Socket.io実装時のみ必須（フェーズ1では不要）
 
 **データベース選定理由**: PrismaはPostgreSQL/MySQL両対応ですが、担当エンジニアのMySQL習熟度を優先してAurora MySQL Serverless v2を採用します。
 
-### フェーズ1でも削減できないコンポーネント
+### フェーズ1の実装方針
 
 ```typescript
-// Socket.io Adapterは必須（複数タスク対応のため）
-import { createAdapter } from '@socket.io/redis-adapter'
-import { Server } from 'socket.io'
+// ポーリング方式（30秒間隔）
+// lib/hooks/useProductStatus.ts
+export function useProductStatus(productId: string, interval = 30000) {
+  const [status, setStatus] = useState<string | null>(null);
 
-const io = new Server(server, {
-  adapter: createAdapter(redis, redis.duplicate())
-})
+  useEffect(() => {
+    async function fetchStatus() {
+      const res = await fetch(`/api/products/${productId}/status`);
+      const data = await res.json();
+      setStatus(data.status);
+    }
+    
+    fetchStatus();
+    const intervalId = setInterval(fetchStatus, interval);
+    return () => clearInterval(intervalId);
+  }, [productId, interval]);
+
+  return { status };
+}
 ```
 
-フェーズ1で1タスクのみでも、将来のスケーリングを考慮してRedis Adapterは最初から実装します。
+フェーズ1ではSocket.io未実装のため、ポーリング方式で状態監視を実装します。
 
 ### Prisma接続プーリング設定（MySQL）
 
@@ -563,10 +590,15 @@ datasource db {
 
 ### やってはいけないこと
 
-1. ❌ フェーズ1でMulti-AZ無効化を怖がらない（身内利用なら許容）
-2. ❌ RDS ProxyやRedisを削除しない（技術的に必須）
+1. ❌ Multi-AZ無効化（可用性を犠牲にしない）
+2. ❌ RDS Proxyを削除しない（技術的に必須）
 3. ❌ フェーズをスキップしない（段階的成長が重要）
 4. ❌ 監視を完全にゼロにしない（最低限CloudWatch Logsは必要）
+
+### フェーズ1での柔軟な判断
+
+1. ✅ Redis省略可能（Socket.io未実装のため）
+2. ✅ ポーリング方式採用（30秒間隔で業務上問題なし）
 
 ---
 
@@ -574,16 +606,17 @@ datasource db {
 
 ### 段階的アプローチの利点
 
-1. **初期コスト削減**: ¥16,095/月でスタート（フルスペックの1/7）
-2. **リスク最小化**: 小規模で運用を学んでからスケール
-3. **柔軟な拡張**: ビジネス成長に合わせて段階的に機能追加
-4. **コスト最適化**: 必要な時に必要な機能だけ追加
+1. **可用性優先**: ¥22,125/月でMulti-AZ対応（99.9%可用性）
+2. **コスト最適化**: Redis不要で¥1,500削減
+3. **リスク最小化**: 小規模で運用を学んでからスケール
+4. **柔軟な拡張**: ビジネス成長に合わせて段階的に機能追加
 
 ### 技術的確実性
 
-- ECS Fargate + Aurora Serverless v2の選択は全フェーズで不変
-- Socket.io対応のためRedisは最初から必須
+- ECS Fargate + Aurora MySQL Serverless v2の選択は全フェーズで不変
+- フェーズ1ではRedis不要（Socket.io未実装のため）
 - RDS Proxyは接続数管理のため全フェーズで必須
+- ポーリング方式（30秒間隔）で状態監視実装
 
 ### 次のステップ
 
@@ -595,4 +628,4 @@ datasource db {
 
 ---
 
-**最終推奨**: フェーズ1で開始し、ビジネスの成長に合わせて段階的にフェーズ2、フェーズ3へ移行することで、**コスト効率と技術的確実性の両立**を実現できます。
+**最終推奨**: フェーズ1（Multi-AZ + Redis無し）で開始し、ビジネスの成長に合わせて段階的にフェーズ2、フェーズ3へ移行することで、**可用性・コスト効率・技術的確実性の三位一体**を実現できます。

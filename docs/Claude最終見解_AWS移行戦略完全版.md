@@ -6,9 +6,9 @@
 
 ### 核心的判断
 
-1. **Amplify Hosting は技術的に不可能** （選択肢ではなく物理的制約）
-2. **ECS Fargate が唯一の現実的解** （他の選択肢は要件を満たせない）
-3. **RDS Proxy + ElastiCache Redis は必須** （オプションではなく必須コンポーネント）
+1. **Amplify Hosting は本プロジェクトに不適合** （規模・要件を考慮した選定）
+2. **ECS Fargate が最適解** （柔軟性・拡張性・コストのバランス）
+3. **RDS Proxy は必須、Redis は不要** （フェーズ1ではSocket.io未実装のため）
 
 ---
 
@@ -30,9 +30,9 @@ PDF生成: jsPDF 3.0.1, PDFKit 0.17.1, pdfmake 0.2.20
 
 1. **app/api/** 配下に107本のAPIルートが存在
 2. 各APIで `new PrismaClient()` を個別生成（接続数爆発のリスク）
-3. Socket.io サーバーが単一インスタンス前提で実装
+3. Socket.io依存関係は存在するが未実装（フェーズ1ではポーリング方式採用）
 4. Sharp/Puppeteer による重い画像・PDF処理が多数
-5. WebSocket常時接続が必須（リアルタイム通知）
+5. 状態監視はポーリング方式で実装予定（30秒間隔）
 
 ### 1.2 ビジネス要件の実態
 
@@ -40,7 +40,7 @@ PDF生成: jsPDF 3.0.1, PDFKit 0.17.1, pdfmake 0.2.20
 商品フロー: 入荷→検品→保管→出品→受注→ピッキング→梱包→発送→配送→返品
 ユーザー種別: セラー（資産管理視点） / スタッフ（タスク駆動型）
 データ規模: 商品1万点、DAU 100人想定
-重要機能: リアルタイム通知（在庫変更、タスク割り当て、ステータス変更）
+重要機能: 状態監視（ポーリング方式、30秒間隔）、リアルタイム通知はフェーズ2以降
 データ種別: 商品画像（大量）、PDF帳票、動画記録、検品履歴
 ```
 
@@ -59,10 +59,10 @@ PDF生成: jsPDF 3.0.1, PDFKit 0.17.1, pdfmake 0.2.20
 
 | 要件 | fbt-v2の実装 | Amplifyの制約 | 結論 |
 |-----|------------|--------------|------|
-| **APIエンドポイント** | 107本（複雑なビジネスロジック） | 軽量なAPI Routesを想定 | ❌ 不適合 |
-| **WebSocket** | Socket.io常時接続必須 | WebSocket対応が限定的 | ❌ 不適合 |
+| **APIエンドポイント** | 107本（複雑なビジネスロジック） | 軽量なAPI Routesを想定 | ⚠️ 多いが対応可能 |
+| **WebSocket** | フェーズ1不要（将来実装可能性） | WebSocket対応が限定的 | ⚠️ 制約あり |
 | **重処理** | Sharp/Puppeteer（CPU/メモリ集約） | 軽量処理を想定 | ❌ 不適合 |
-| **カスタムサーバー** | Socket.io統合サーバー必要 | カスタムサーバー未対応 | ❌ 不適合 |
+| **カスタムサーバー** | フェーズ1不要 | カスタムサーバー未対応 | ✅ 問題なし |
 | **ビルドサイズ** | 依存関係が重い（画像/PDF/動画） | 制限あり | ⚠️ 要検証 |
 
 **技術的詳細:**
@@ -82,9 +82,9 @@ io.on('connection', (socket) => {
 httpServer.listen(3000)
 ```
 
-Amplifyは `next start` の標準実行を前提としており、**カスタムサーバーの起動ができません**。これは技術的制約であり、回避不可能です。
+Amplifyは軽量なNext.jsアプリを想定しており、本プロジェクトの重処理（Sharp/Puppeteer）には不向きです。
 
-**結論: Amplifyは物理的に採用不可能**
+**結論: Amplifyは本プロジェクトの規模・要件に不適合（技術的には可能だが推奨しない）**
 
 ---
 
@@ -102,7 +102,7 @@ Amplifyは `next start` の標準実行を前提としており、**カスタム
 | 要件 | ECS Fargateの対応 | 評価 |
 |-----|------------------|------|
 | **107本API** | フル対応（制限なし） | ✅ 完全適合 |
-| **Socket.io** | カスタムサーバー起動可能 | ✅ 完全適合 |
+| **将来拡張性** | Socket.io追加も容易 | ✅ 完全適合 |
 | **重処理** | CPU/メモリ調整可能 | ✅ 完全適合 |
 | **スケーリング** | オートスケール対応 | ✅ 完全適合 |
 | **監視** | CloudWatch完全統合 | ✅ 完全適合 |
@@ -132,16 +132,20 @@ CMD ["node", "server.js"]
 - ECSより運用が簡単
 - オートスケール対応
 
-**なぜ採用しないのか:**
+**App Runnerとの比較:**
 
-1. **WebSocket制約**: App RunnerはWebSocket対応が限定的
-2. **ECSとの価格差**: 小規模なら安いが、スケール時は逆転
-3. **柔軟性**: ECSに比べてカスタマイズ性が低い
-4. **VPC統合**: 2022年対応だが、ECSより制約が多い
+| 項目 | ECS Fargate | App Runner | 判断 |
+|-----|------------|-----------|------|
+| **運用難易度** | 中 | 低 | App Runner有利 |
+| **柔軟性** | 高 | 中 | ECS有利 |
+| **コスト（小規模）** | $203/月 | $217/月 | ECS有利 |
+| **将来拡張性** | 高（Socket.io追加容易） | 中 | ECS有利 |
+| **学習コスト** | 中 | 低 | App Runner有利 |
 
 **判断:**
-- WebSocketが必須要件である以上、確実性を優先してECS Fargateを選択
-- 運用の簡便性よりも、技術的確実性を重視
+- フェーズ1ではWebSocket不要だが、将来的な拡張性を考慮
+- ECS Fargateの柔軟性・コストメリットを優先
+- App Runnerも有力な代替案として記録
 
 ---
 
@@ -254,9 +258,20 @@ RDS Proxy: $0.015/hour × 24h × 30日 = $10.8/月
 
 ---
 
-### 3.3 なぜ ElastiCache Redis が必須なのか
+### 3.3 ElastiCache Redis の要否判断
 
-**用途1: セッション管理**
+**フェーズ1判断: Redis不要**
+
+理由:
+- Socket.io未実装のためRedis Adapter不要
+- セッション管理はJWT（ステートレス）で実装
+- マスタデータキャッシュはアプリケーションメモリで十分
+
+**フェーズ2以降（Socket.io実装時）: Redis必須**
+
+以下は将来的にSocket.io実装時の参考情報:
+
+**用途1: セッション管理（将来）**
 
 ```typescript
 // 現在の実装（データベース直接）
@@ -292,21 +307,9 @@ if (cached) return JSON.parse(cached) // ✅ TTL 1時間
 
 ---
 
-**用途3: Socket.io Adapter（最重要）**
+**用途3: Socket.io Adapter（将来実装時のみ）**
 
-**現状の問題:**
-
-```typescript
-// 単一サーバー前提
-const io = new Server(server)
-
-// ECS Fargate で2タスク起動すると...
-// タスク1: 50ユーザー接続
-// タスク2: 50ユーザー接続
-// → タスク1からタスク2のユーザーにイベントを送信できない！
-```
-
-**Redis Adapterによる解決:**
+フェーズ2以降でSocket.io実装時の参考:
 
 ```typescript
 import { createAdapter } from '@socket.io/redis-adapter'
@@ -316,20 +319,14 @@ const io = new Server(server, {
 })
 
 // Redis Pub/Sub で全タスクにイベント配信
-// タスク1 → Redis → タスク2（自動的にブロードキャスト）
 ```
 
-**効果:**
-- ECS Fargate の複数タスク対応
-- 水平スケーリングが可能に
-- リアルタイム通知の確実な配信
-
-**コスト:**
+**Socket.io実装時のコスト:**
 ```
 cache.t4g.micro × 2（Multi-AZ）: $0.014/hour × 2 × 24h × 30日 = $20/月
 ```
 
-**結論: ElastiCache Redis は必須（特にSocket.io Adapter用途）**
+**結論: フェーズ1ではRedis不要、Socket.io実装時に追加検討**
 
 ---
 
@@ -352,15 +349,16 @@ Internet
     │ │ Next.js Container       │ │
     │ │ ├─ SSR/ISR (React UI)  │ │
     │ │ ├─ API Routes (107本)  │ │
-    │ │ └─ Socket.io Server    │ │
+    │ │ └─ ポーリング方式      │ │
+    │ │   （30秒間隔）         │ │
     │ └─────────────────────────┘ │
     │ タスク数: 2-10（オートスケール）│
     └─────────────────────────────┘
-       ↓              ↓
-  [RDS Proxy]    [ElastiCache Redis]
-       ↓              ├─ セッション
-  [Aurora PG]         ├─ マスタデータ
-  Serverless v2       └─ Socket.io Adapter
+       ↓
+  [RDS Proxy]
+       ↓
+  [Aurora MySQL]
+  Serverless v2
   Multi-AZ
        ↓
   [AWS Backup]
@@ -385,9 +383,9 @@ Internet
 | **LB** | ALB | NLB（△ WebSocket制約） | ✅ ALB一択 |
 | **Compute** | ECS Fargate | Amplify（❌）、App Runner（△）、Lambda（❌） | ✅ ECS Fargate |
 | **Container** | ECR | Docker Hub（△） | ✅ ECR |
-| **Database** | Aurora Serverless v2 | Provisioned（△）、RDS（△）、DynamoDB（❌） | ✅ Aurora Serverless v2 |
+| **Database** | Aurora Serverless v2 | Provisioned（△）、RDS（△）、DynamoDB（❌） | ✅ Aurora Serverless v2 (MySQL) |
 | **DB Proxy** | RDS Proxy | なし（❌） | ✅ 必須 |
-| **Cache** | ElastiCache Redis | Memcached（❌ Socket.io非対応） | ✅ Redis |
+| **Cache** | なし（フェーズ1） | Redis（フェーズ2でSocket.io時） | ❌ フェーズ1不要 |
 | **Storage** | S3 | EFS（❌ コスト高）、EBS（❌ 単一AZ） | ✅ S3 |
 | **Secrets** | Secrets Manager | SSM Parameter Store（△） | ✅ Secrets Manager |
 | **Monitoring** | CloudWatch + X-Ray + Sentry | Datadog（△ コスト高） | ✅ AWS統合 |
@@ -447,12 +445,12 @@ Cognito: MAU 100人 × $0.0055 = $0.55/月（少額だが増加）
 | └ 通常時（2タスク） | 0.5vCPU, 1GB × 2 × 730h | $0.04856/h | $71 | ¥10,650 |
 | └ ピーク時追加（平均2タスク） | 0.5vCPU, 1GB × 2 × 240h | $0.04856/h | $23 | ¥3,450 |
 | **ALB** | 1個、LCU 10/h平均 | - | $25 | ¥3,750 |
-| **Aurora Serverless v2** | 0.5-2 ACU、平均1 ACU | - | - | - |
+| **Aurora Serverless v2 (MySQL)** | 0.5-2 ACU、平均1 ACU、Multi-AZ | - | - | - |
 | └ Compute | $0.12/ACU/h × 1 × 730h | - | $88 | ¥13,200 |
 | └ Storage | 20GB × $0.10/GB | - | $2 | ¥300 |
 | └ I/O | 100万リクエスト × $0.20/百万 | - | $0.2 | ¥30 |
 | **RDS Proxy** | 2エンドポイント × 730h | $0.015/h | $22 | ¥3,300 |
-| **ElastiCache Redis** | cache.t4g.micro × 2（Multi-AZ） | $0.014/h | $20 | ¥3,000 |
+| **ElastiCache Redis** | フェーズ1不要 | - | $0 | ¥0 |
 | **S3** | - | - | - | - |
 | └ ストレージ | 100GB × $0.023/GB | - | $2.3 | ¥345 |
 | └ リクエスト | 10万PUT、100万GET | - | $0.5 | ¥75 |
@@ -470,8 +468,12 @@ Cognito: MAU 100人 × $0.0055 = $0.55/月（少額だが増加）
 | **X-Ray** | 10万トレース × $5/百万 | - | $0.5 | ¥75 |
 | **AWS Backup** | 20GB × $0.05/GB | - | $1 | ¥150 |
 | **データ転送** | NAT Gateway 50GB | $0.045/GB | $2.25 | ¥338 |
-| **合計（通常時）** | | | **$348** | **¥52,200** |
-| **合計（ピーク込み）** | | | **$371** | **¥55,650** |
+| **合計（通常時）** | | | **$328** | **¥49,200** |
+| **合計（ピーク込み）** | | | **$351** | **¥52,650** |
+
+**※フェーズ1での削減:**
+- Redis不要: -$20/月（-¥3,000）
+- Multi-AZ化で可用性向上（コストは維持）
 
 *1 USD = 150 JPYで換算
 
@@ -481,40 +483,45 @@ Cognito: MAU 100人 × $0.0055 = $0.55/月（少額だが増加）
 
 **即効性のある施策:**
 
-1. **Aurora Serverless v2 の時間帯別ACU調整**
+1. **フェーズ1での削減実績**
+   ```
+   Redis不要: -$20/月（Socket.io未実装のため）
+   ```
+
+2. **Aurora Serverless v2 の時間帯別ACU調整**
    ```
    夜間（22:00-08:00）: 0.5 ACU固定
    日中（08:00-22:00）: 1-2 ACU自動スケール
    削減効果: $20/月（-20%）
    ```
 
-2. **ECS Fargate Spot（非本番環境）**
+3. **ECS Fargate Spot（非本番環境）**
    ```
    開発環境でSpotインスタンス利用
    削減効果: 70% ($50/月削減)
    ```
 
-3. **S3 Intelligent-Tiering**
+4. **S3 Intelligent-Tiering**
    ```
    90日アクセスなし → Glacier移行
    削減効果: $5/月（ストレージコスト-50%）
    ```
 
-4. **CloudWatch Logs保持期間短縮**
+5. **CloudWatch Logs保持期間短縮**
    ```
    30日 → 7日に変更（本番以外）
    削減効果: $15/月（-50%）
    ```
 
-5. **VPC Endpoint（S3/Secrets Manager）**
+6. **VPC Endpoint（S3/Secrets Manager）**
    ```
    NAT Gateway経由トラフィックを削減
    削減効果: $5/月
    ```
 
-**合計削減効果: 約$95/月（-26%）**
+**合計削減効果: 約$115/月（-33%）**
 
-**最適化後コスト: $276/月（¥41,400）**
+**最適化後コスト: $236/月（¥35,400）**
 
 ---
 
@@ -522,11 +529,11 @@ Cognito: MAU 100人 × $0.0055 = $0.55/月（少額だが増加）
 
 | フェーズ | 月額コスト | 備考 |
 |---------|-----------|------|
-| **開発環境** | $100-150 | 1タスク、小ACU、Spot利用 |
-| **ステージング環境** | $150-200 | 1-2タスク、本番同等構成 |
-| **本番初期（DAU 50）** | $250-300 | 2タスク、最小ACU |
-| **本番拡大（DAU 100）** | $350-400 | 2-4タスク、平均ACU 1 |
-| **本番スケール（DAU 300）** | $600-800 | 4-8タスク、平均ACU 2 |
+| **開発環境** | $80-120 | 1タスク、小ACU、Spot利用、Redis不要 |
+| **ステージング環境** | $130-180 | 1-2タスク、本番同等構成、Redis不要 |
+| **本番初期（DAU 50）** | $230-280 | 2タスク、最小ACU、Redis不要 |
+| **本番拡大（DAU 100）** | $330-380 | 2-4タスク、平均ACU 1、Redis不要 |
+| **本番スケール（DAU 300）** | $580-780 | 4-8タスク、平均ACU 2、Socket.io時Redis追加 |
 
 ---
 
@@ -2235,7 +2242,7 @@ aws route53 change-resource-record-sets \
 | リスク | 発生確率 | 影響度 | リスクレベル | 対策 |
 |-------|---------|--------|------------|------|
 | **Prisma接続数超過** | 高 | 高 | 🔴 Critical | ✅ 共有インスタンス化 + RDS Proxy |
-| **Socket.io分散失敗** | 高 | 高 | 🔴 Critical | ✅ Redis Adapter実装 |
+| **ポーリング遅延** | 低 | 低 | 🟢 Low | ✅ 30秒間隔で業務上問題なし |
 | **データ移行時の損失** | 中 | 高 | 🟠 High | ✅ 段階移行 + バックアップ検証 |
 | **本番移行失敗** | 中 | 高 | 🟠 High | ✅ Blue-Green Deploy + ロールバック手順 |
 | **コスト超過** | 中 | 中 | 🟡 Medium | ✅ 月次レビュー + アラート設定 |
@@ -2528,14 +2535,15 @@ curl https://fbt.example.com/api/health
 ## 🔚 結論
 
 **技術的必然性:**
-- Next.js 14 + 107本API + Socket.io という構成は、ECS Fargate以外の選択肢を許さない
-- RDS Proxy + ElastiCache Redisは、Prisma接続とSocket.io分散のために必須
-- Aurora Serverless v2は、コスト効率と性能のバランスで最適
+- Next.js 14 + 107本API + 重処理（Sharp/Puppeteer）という構成は、ECS Fargateが最適
+- RDS Proxyは、Prisma接続プーリングのために必須
+- Aurora MySQL Serverless v2は、コスト効率と性能のバランスで最適
+- フェーズ1ではRedis不要（Socket.io未実装のため）
 
 **ビジネス価値:**
-- 月額¥33,000-58,500で99.9%可用性
-- 5週間で移行完了
+- 月額¥49,200（通常時）で99.9%可用性（Multi-AZ）
+- 4.5週間で移行完了（Redis構築省略で短縮）
 - ダウンタイムゼロ
-- 将来のスケールに対応
+- 将来のスケール・Socket.io追加に対応可能
 
 ---
